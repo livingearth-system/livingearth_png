@@ -89,6 +89,9 @@ class WOfS(Transformation):
         # drop count data variables (leaving on wofs frequency)
         wofs = summary.drop_vars(['count_wet', 'count_clear'])
 
+        # Re-rename dimensions as required
+        wofs = wofs.rename({"longitude": "x", "latitude": "y"})
+        
         return wofs
 
     def measurements(self, input_measurements):
