@@ -1,3 +1,5 @@
+import tempfile
+import os
 from datacube.virtual import construct, Transformation, Measurement
 import xarray as xr
 import datacube
@@ -61,15 +63,15 @@ class WOfS(Transformation):
         dem = dc.load(product="copernicus_dem_30", like=data_time_drop)
         elevation = dem.elevation
         
-        # Need to save out DEM (fetched in WOfS function) - TODO, can this be improved?
-        DEM_PATH = "/home/jovyan/dems/PNG_test.tif"
+        # Need to save out DEM (fetched in WOfS function) - create a temp file to store this
+        temp_dem_file = tempfile.mkstemp(prefix="le_lccs_dem_", suffix=".tif")[1]
 
-        dem_path = Path(DEM_PATH)
+        dem_path = Path(temp_dem_file)
         dem_path.parent.mkdir(parents=True, exist_ok=True)
         elevation.rio.to_raster(dem_path)        
         
         # run the WOfS classifier
-        transform = WOfSClassifier(c2_scaling=True, dsm_path=DEM_PATH)
+        transform = WOfSClassifier(c2_scaling=True, dsm_path=temp_dem_file)
 
         # Compute the WOFS layer
         wofl = transform.compute(data)
@@ -91,6 +93,9 @@ class WOfS(Transformation):
 
         # Re-rename dimensions as required
         wofs = wofs.rename({"longitude": "x", "latitude": "y"})
+        
+        # Remove temp DEM file
+        os.remove(temp_dem_file)
         
         return wofs
 
