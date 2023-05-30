@@ -39,6 +39,7 @@ from datacube.utils.aws import configure_s3_access
 PNG_COASTAL_TILES_S3 = "s3://easi-asia-user-scratch/AROA4YF43ZWIU6TNXUYDM:danclewley/png_0_5_deg_tiles_coast.gpkg"
 GMW_2020_S3 = "s3://easi-asia-user-scratch/AROA4YF43ZWIU6TNXUYDM:danclewley/gmw_v3_2020_vec_png.gpkg"
 
+
 def write_rgb_cog(classification_data, red, green, blue, out_filename):
     """ "
     Write out an RGB image as a cloud optimised GeoTiff
@@ -132,6 +133,7 @@ query = {
     "longitude": longitude,
     "output_crs": crs,
     "resolution": res,
+    "dask_chunks": {"x": 512, "y": 512},
 }
 
 # ### 1. Vegetated / Non-Vegetated
