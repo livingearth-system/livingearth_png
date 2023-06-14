@@ -1,0 +1,52 @@
+### what we still need ###
+# mangroves (.shp inputs)
+# sen-1 cultivated
+# sen-1 woody
+
+products:
+    # Static path names, extracted to top to make them easier to change
+    woody_cover_model: &woody_model "/home/jovyan/code/livingearth_png/data/wcf_pickle_sklearn_version_1.pickle"
+    
+    # Virtual products recipes to generate
+    ls_8:
+        recipe:
+            &ls_8_recipe
+            product: landsat8_c2l2_sr # 2013 - 2022
+            group_by: solar_day
+            measurements: [blue, green, red, nir08, swir16, swir22, qa_pixel]
+            
+    geomedian:
+        recipe:
+            &geomedian_recipe
+            transform: geomedian
+            input: *ls_8_recipe
+
+    fractional_cover:
+        recipe:
+            &fractional_cover_recipe
+            transform: fractional_cover
+            input: *ls_8_recipe
+    DEM:
+        recipe:
+            &DEM_recipe
+            product: copernicus_dem_30
+            measurements: [elevation]
+
+    WOfS:
+        recipe:
+            &WOfS_recipe
+            transform: WOfS
+            input: *ls_8_recipe
+
+    mangroves:
+        recipe:
+            &mangroves_recipe
+            transform: mangroves
+            input: *ls_8_recipe
+
+    WCF:
+        recipe:
+            &WCF_recipe
+            transform: WCF
+            input: *geomedian_recipe
+            model_pickle: *woody_model
