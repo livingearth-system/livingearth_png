@@ -14,6 +14,7 @@ import numpy as np
 import xarray as xr
 import geopandas as gpd
 import rasterio
+from dask.diagnostics import ProgressBar
 
 import datacube
 from datacube.utils import masking
@@ -35,9 +36,16 @@ from datacube.utils.cog import write_cog
 # AWS access
 from datacube.utils.aws import configure_s3_access
 
-# Set paths to datasets in S3 buckets
-PNG_COASTAL_TILES_S3 = "s3://easi-asia-user-scratch/AROA4YF43ZWIU6TNXUYDM:danclewley/png_0_5_deg_tiles_coast.gpkg"
-GMW_2020_S3 = "s3://easi-asia-user-scratch/AROA4YF43ZWIU6TNXUYDM:danclewley/gmw_v3_2020_vec_png.gpkg"
+# Check for local versions of files, if not use S3 buckets
+PNG_COASTAL_TILES_S3 = "/home/jovyan/data/png_0_5_deg_tiles_coast.gpkg"
+GMW_2020_S3 = "/home/jovyan/data/gmw_v3_2020_vec_png.gpkg"
+if not os.path.isfile(PNG_COASTAL_TILES_S3):
+    PNG_COASTAL_TILES_S3 = "s3://easi-asia-user-scratch/AROA4YF43ZWIU6TNXUYDM:danclewley/png_0_5_deg_tiles_coast.gpkg"
+if not os.path.isfile(GMW_2020_S3):
+    GMW_2020_S3 = "s3://easi-asia-user-scratch/AROA4YF43ZWIU6TNXUYDM:danclewley/gmw_v3_2020_vec_png.gpkg"
+
+
+print(f'Will use caching proxy at: {os.environ.get("GDAL_HTTP_PROXY")}')
 
 
 def write_rgb_cog(classification_data, red, green, blue, out_filename):
@@ -101,8 +109,17 @@ catalog = catalog_from_file(os.path.abspath("../le_plugins/virtual_product_cat.y
 # Configure AWS access
 configure_s3_access(aws_unsigned=False, requester_pays=True)
 
+# Set up progress bar for dask and register so is used as needed
+pbar = ProgressBar()
+pbar.register()
+
+# Read in bounds tiles
 bounds_gdf = data = gpd.read_file(PNG_COASTAL_TILES_S3)
 
+# Get polygon for specified tile
+tile_gdf = bounds_gdf[bounds_gdf.id == args.tile_id]
+
+# Set output paths
 out_level3_rgb_file = os.path.join(
     args.outdir, f"png_lccs_classification_v0_1_level3_rgb_tile_{args.tile_id:03}.tif"
 )
@@ -113,8 +130,6 @@ out_bce_file = os.path.join(
     args.outdir, f"png_lccs_classification_v0_1_bce_tile_{args.tile_id:03}.tif"
 )
 
-# Get polygon for specified tile
-tile_gdf = bounds_gdf[bounds_gdf.id == args.tile_id]
 
 # Get bounds for tile
 latitude = (float(tile_gdf.bounds.maxy), float(tile_gdf.bounds.miny))
@@ -196,10 +211,6 @@ vegetat_veg_cat_ds = vegetat.to_dataset(
     name="vegetat_veg_cat"
 )  # .squeeze().drop('time')
 
-
-# In[11]:
-
-
 vegetat_veg_cat_ds.vegetat_veg_cat.plot()
 
 
@@ -213,8 +224,8 @@ vegetat_veg_cat_ds.vegetat_veg_cat.plot()
 #
 # Water Observations from Space (WOfS) is used to distinguish aquatic and terrestrial areas.
 # https://www.sciencedirect.com/science/article/pii/S0034425715301929?via%3Dihub
-# <br> A threshold of 20% is applied for the annual summary dataset to remove flood events not indicative of the landscape.
-# <br>The Mangrove layer are also used for relevant coastal landscapes.
+# * A threshold of 20% is applied for the annual summary dataset to remove flood events not indicative of the landscape.
+# *i The Mangrove layer are also used for relevant coastal landscapes.
 #
 
 # note: wofs (loaded in level 1 as wofs_mask)
