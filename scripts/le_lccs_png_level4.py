@@ -39,10 +39,13 @@ from datacube.utils.aws import configure_s3_access
 # Check for local versions of files, if not use S3 buckets
 PNG_COASTAL_TILES_S3 = "/home/jovyan/data/png_0_5_deg_tiles_coast.gpkg"
 GMW_2020_S3 = "/home/jovyan/data/gmw_v3_2020_vec_png.gpkg"
-if not os.path.isfile(PNG_COASTAL_TILES_S3):
-    PNG_COASTAL_TILES_S3 = "s3://easi-asia-user-scratch/AROA4YF43ZWIU6TNXUYDM:danclewley/png_0_5_deg_tiles_coast.gpkg"
-if not os.path.isfile(GMW_2020_S3):
-    GMW_2020_S3 = "s3://easi-asia-user-scratch/AROA4YF43ZWIU6TNXUYDM:danclewley/gmw_v3_2020_vec_png.gpkg"
+# Force using S3 (e.g., for testing)
+FORCE_S3=False
+if not os.path.isfile(PNG_COASTAL_TILES_S3) or FORCE_S3:
+    PNG_COASTAL_TILES_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_5_deg_tiles_coast.gpkg"
+    print("s3")
+if not os.path.isfile(GMW_2020_S3) or FORCE_S3:
+    GMW_2020_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/gmw_v3_2020_vec_png.gpkg"
 
 
 print(f'Will use caching proxy at: {os.environ.get("GDAL_HTTP_PROXY")}')
