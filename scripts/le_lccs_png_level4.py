@@ -14,7 +14,6 @@ import numpy as np
 import xarray as xr
 import geopandas as gpd
 import rasterio
-from dask.diagnostics import ProgressBar
 
 import datacube
 from datacube.utils import masking
@@ -37,16 +36,21 @@ from datacube.utils.cog import write_cog
 from datacube.utils.aws import configure_s3_access
 
 # Check for local versions of files, if not use S3 buckets
-PNG_COASTAL_TILES_S3 = "/home/jovyan/data/png_0_5_deg_tiles_coast.gpkg"
+PNG_COASTAL_TILES_S3 = "/home/jovyan/data/png_0_25_deg_tiles_coast.gpkg"
 GMW_2020_S3 = "/home/jovyan/data/gmw_v3_2020_vec_png.gpkg"
 # Force using S3 (e.g., for testing)
-FORCE_S3=False
+FORCE_S3 = False
 if not os.path.isfile(PNG_COASTAL_TILES_S3) or FORCE_S3:
-    PNG_COASTAL_TILES_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_5_deg_tiles_coast.gpkg"
-    print("s3")
+    PNG_COASTAL_TILES_S3 = (
+        "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_25_deg_tiles_coast.gpkg"
+    )
 if not os.path.isfile(GMW_2020_S3) or FORCE_S3:
-    GMW_2020_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/gmw_v3_2020_vec_png.gpkg"
+    GMW_2020_S3 = (
+        "s3://oa-bluecarbon-work-easi/livingearth-png/gmw_v3_2020_vec_png.gpkg"
+    )
 
+print(f"Loading tiles from {PNG_COASTAL_TILES_S3}")
+print(f"Loading GMW from {GMW_2020_S3}")
 
 print(f'Will use caching proxy at: {os.environ.get("GDAL_HTTP_PROXY")}')
 
@@ -112,10 +116,6 @@ catalog = catalog_from_file(os.path.abspath("../le_plugins/virtual_product_cat.y
 # Configure AWS access
 configure_s3_access(aws_unsigned=False, requester_pays=True)
 
-# Set up progress bar for dask and register so is used as needed
-pbar = ProgressBar()
-pbar.register()
-
 # Read in bounds tiles
 bounds_gdf = data = gpd.read_file(PNG_COASTAL_TILES_S3)
 
@@ -151,7 +151,6 @@ query = {
     "longitude": longitude,
     "output_crs": crs,
     "resolution": res,
-    "dask_chunks": {"x": 512, "y": 512},
 }
 
 # ### 1. Vegetated / Non-Vegetated
@@ -235,13 +234,12 @@ vegetat_veg_cat_ds.vegetat_veg_cat.plot()
 
 # load mangroves as mask
 print("Loading GMW...")
-gmw_2020 = "s3://easi-asia-user-scratch/AROA4YF43ZWIU6TNXUYDM:danclewley/gmw_v3_2020_vec_png.gpkg"
 
 # load in mangrove vector data just for AOI extent
 bbox = [longitude[0], latitude[1], longitude[1], latitude[0]]
 
 # Load the mangrove vector data within the AOI extent
-gmw = gpd.read_file(gmw_2020, bbox=bbox)
+gmw = gpd.read_file(GMW_2020_S3, bbox=bbox)
 
 # Check if the mangrove vector dataset is empty
 if gmw.empty:
