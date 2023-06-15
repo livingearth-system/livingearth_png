@@ -18,6 +18,7 @@ import rasterio
 import datacube
 from datacube.utils import masking
 from dea_tools.spatial import xr_rasterize
+from datacube.testutils.io import rio_slurp_xarray
 
 # import le_lccs modules (assumes these have been installed)
 from le_lccs.le_classification import lccs_l3
@@ -38,6 +39,8 @@ from datacube.utils.aws import configure_s3_access
 # Check for local versions of files, if not use S3 buckets
 PNG_COASTAL_TILES_S3 = "/home/jovyan/data/png_0_25_deg_tiles_coast.gpkg"
 GMW_2020_S3 = "/home/jovyan/data/gmw_v3_2020_vec_png.gpkg"
+TIDAL_WETLAND_S3 = "/home/jovyan/data/Tidal_wetland_Murray_20172019_30m_PNG.tif"
+
 # Force using S3 (e.g., for testing)
 FORCE_S3 = False
 if not os.path.isfile(PNG_COASTAL_TILES_S3) or FORCE_S3:
@@ -48,9 +51,14 @@ if not os.path.isfile(GMW_2020_S3) or FORCE_S3:
     GMW_2020_S3 = (
         "s3://oa-bluecarbon-work-easi/livingearth-png/gmw_v3_2020_vec_png.gpkg"
     )
+if not os.path.isfile(TIDAL_WETLAND_S3) or FORCE_S3:
+    TIDAL_WETLAND_S3 = (
+        "s3://oa-bluecarbon-work-easi/livingearth-png/Tidal_wetland_Murray_20172019_30m_PNG.tif"
+    )
 
 print(f"Loading tiles from {PNG_COASTAL_TILES_S3}")
 print(f"Loading GMW from {GMW_2020_S3}")
+print(f"Loading Tidal Wetlands from {TIDAL_WETLAND_S3}")
 
 print(f'Will use caching proxy at: {os.environ.get("GDAL_HTTP_PROXY")}')
 
@@ -140,7 +148,7 @@ longitude = (float(tile_gdf.bounds.minx), float(tile_gdf.bounds.maxx))
 
 # Set up time
 # TODO: read this from the command line
-time = ("2020-01-01", "2020-07-31")
+time = ("2020-01-01", "2020-12-31")
 
 crs = "EPSG:32755"
 res = (30, -30)
@@ -261,9 +269,19 @@ else:
     # Rasterize the mangrove vector data to match the shape of the WOfS mask
     mangrove = xr_rasterize(gdf=gmw_aoi, da=wofs_mask)
 
+# Open Murray's tidal wetland probability (2017-2019) file as xarray
+tidal_wetland = rio_slurp_xarray(TIDAL_WETLAND_S3, gbox=vegetat_veg_cat_ds.geobox)
+
+# Threshold probability layer to 50%
+tidal_wetland_extent = ((tidal_wetland.where(tidal_wetland>50))*0+1).fillna(0)
+
+# Remove mudflats from Murray's layer
+tidal_wetland_veg = vegetat_veg_cat_ds.vegetat_veg_cat * tidal_wetland_extent
+
 # Create binary layer representing aquatic (1) and terrestrial (0)
 # For coastal landscapes use the following
-aquatic_wat = wofs_mask | mangrove
+aquatic_wat = (wofs_mask + mangrove + tidal_wetland_veg)
+aquatic_wat = (aquatic_wat.where(aquatic_wat > 0)*0+1).fillna(0)
 
 # Convert to Dataset and add name
 aquatic_wat_cat_ds = aquatic_wat.to_dataset(
