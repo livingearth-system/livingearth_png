@@ -295,26 +295,10 @@ aquatic_wat_cat_ds = aquatic_wat.to_dataset(
 #    * **Primarily Vegetated, Aquatic or Regularly Flooded, Artificial/Managed**: Cultivated Aquatic or Regularly Flooded Areas
 #    * **Primarily Vegetated, Aquatic or Regularly Flooded, (Semi-)natural**: Natural and Semi-Natural Aquatic or Regularly Flooded Vegetation
 #
-# <font color=red>**TODO:** Carole and Annette exploring sentinel-1 options here </font>
 print("Calculating natural vegetation...")
-# Need to add any transformations for the VP you're using
-# Get location of transformation
-transformation = "geomedian"
-trans_loc = importlib.import_module(transformation)
-trans_class = transformation.split(".")[-1]
-
-DEFAULT_RESOLVER.register("transform", trans_class, getattr(trans_loc, trans_class))
-
-# load geomedian
-product = catalog["geomedian"]
-geomedian = product.load(dc, **query)
-
-# Create binary layer representing cultivated (1) and natural (0)
-# calculate NDVI (PLACEHOLDER)
-NDVI = (geomedian.nbart_nir - geomedian.nbart_red) / (
-    geomedian.nbart_nir + geomedian.nbart_red
-)
-cultman = (NDVI >= 0.4) & (NDVI <= 0.7)
+# Create a raster of zeros
+cultman = xr.DataArray(np.zeros_like(wofs_mask), 
+                       coords=wofs_mask.coords, dims=wofs_mask.dims, attrs=wofs_mask.attrs)
 
 # Convert to Dataset and add name
 cultman_agr_cat_ds = cultman.to_dataset(
