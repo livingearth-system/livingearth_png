@@ -41,6 +41,7 @@ PNG_COASTAL_TILES_S3 = "/home/jovyan/data/png_0_25_deg_tiles_coast.gpkg"
 GMW_2020_S3 = "/home/jovyan/data/gmw_v3_2020_vec_png.gpkg"
 TIDAL_WETLAND_S3 = "/home/jovyan/data/Tidal_wetland_Murray_20172019_30m_PNG.tif"
 OSM_S3 = "/home/jovyan/data/papua-new-guinea.gpkg"
+WOODY_S3 = "/home/jovyan/data/Woodyarti_30m_PNG.tif"
 
 # Force using S3 (e.g., for testing)
 FORCE_S3 = False
@@ -59,6 +60,10 @@ if not os.path.isfile(TIDAL_WETLAND_S3) or FORCE_S3:
 if not os.path.isfile(OSM_S3) or FORCE_S3:
     OSM_S3 = (
         "s3://oa-bluecarbon-work-easi/livingearth-png/papua-new-guinea.gpkg"
+    )
+if not os.path.isfile(WOODY_S3) or FORCE_S3:
+    WOODY_S3 = (
+        "s3://oa-bluecarbon-work-easi/livingearth-png/Woodyarti_30m_PNG.tif"
     )
 
 print(f"Loading tiles from {PNG_COASTAL_TILES_S3}")
@@ -411,14 +416,6 @@ out_class_xarray = xr.Dataset(
 )
 classification_data = xr.merge([classification_data, out_class_xarray])
 
-# Creating an array of non-valid bare surface because of the wofs' nan issue
-classification_nan = ((classification_data.level3.where(
-                            (classification_data.level3==216) & 
-                            (wofs.frequency.isnull())))*0).fillna(1)
-
-# Filtering non-valid bare surface out of level 3
-classification_data = classification_data * classification_nan
-
 red, green, blue, alpha = lccs_l3.colour_lccs_level3(classification_data.level3.values)
 write_rgb_cog(classification_data, red, green, blue, out_level3_rgb_file)
 print(f"Saved Level 3 RGB to {out_level3_rgb_file}")
@@ -438,25 +435,15 @@ level3_ds = classification_data.level3.to_dataset(name="level3")
 # 1: Woody (trees, shrubs)
 # 2: Herbaceous (grasses, forbs)
 
-# Load woody cover fraction
+# Open woodyarti tif file as xarray
+woody_s1_layer = rio_slurp_xarray(WOODY_S3, gbox=vegetat_veg_cat_ds.geobox)
 
-# Need to add any transformations for the VP you're using
-# Get location of transformation
-print("Loading Woody Cover Fraction...")
-transformation = "WCF"
-trans_loc = importlib.import_module(transformation)
-trans_class = transformation.split(".")[-1]
+# Merge S1-derived Woody layer and GMW
+woody_layer = (mangrove + woody_s1_layer)
 
-DEFAULT_RESOLVER.register("transform", trans_class, getattr(trans_loc, trans_class))
-
-# load WCF
-product = catalog["WCF"]
-wcf = product.load(dc, **query)
-wcf_da = wcf.WCF
-
-lifeform = wcf_da.copy()
-# threshold of woody and non woody vegetation
-lifeform.values = np.where(lifeform >= 0.2, 1, 2)
+# Convert binary woodyarti layer to lifeform lccs classes
+lifeform = woody_layer.where(woody_layer > 0)*0+1
+lifeform = lifeform.fillna(2)
 
 # Convert to Dataset and add name
 lifeform_veg_cat_ds = lifeform.to_dataset(
