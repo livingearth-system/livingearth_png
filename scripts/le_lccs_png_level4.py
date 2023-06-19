@@ -411,7 +411,15 @@ out_class_xarray = xr.Dataset(
 )
 classification_data = xr.merge([classification_data, out_class_xarray])
 
-red, green, blue, alpha = lccs_l3.colour_lccs_level3(level3)
+# Creating an array of non-valid bare surface because of the wofs' nan issue
+classification_nan = ((classification_data.level3.where(
+                            (classification_data.level3==216) & 
+                            (wofs.frequency.isnull())))*0).fillna(1)
+
+# Filtering non-valid bare surface out of level 3
+classification_data = classification_data * classification_nan
+
+red, green, blue, alpha = lccs_l3.colour_lccs_level3(classification_data.level3.values)
 write_rgb_cog(classification_data, red, green, blue, out_level3_rgb_file)
 print(f"Saved Level 3 RGB to {out_level3_rgb_file}")
 
