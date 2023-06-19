@@ -209,9 +209,8 @@ wofs = masking.mask_invalid_data(wofs)
 wofs_mask = wofs["frequency"] >= 0.2
 
 # Create binary layer representing vegetated (1) and non-vegetated (0)
-vegetat = (fractional_cover["PV_PC_90"] >= 50) | (
-    (fractional_cover["NPV_PC_90"] >= 50) & (fractional_cover["NPV_PC_90"] <= 80)
-)
+vegetat = ((fractional_cover["PV_PC_90"] > 25).fillna(0) - (fractional_cover["NPV_PC_90"] > 25).fillna(0))
+vegetat = (vegetat.where(vegetat>0)*0+1).fillna(0)
 
 # mask out water here
 vegetat = vegetat.where(wofs_mask == 0, 0, 1)
