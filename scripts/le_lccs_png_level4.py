@@ -472,6 +472,9 @@ l4_classification_data = xr.merge(variables_xarray_list)
 # Apply Level 4 classification
 classification_array = lccs_l4.classify_lccs_level4(l4_classification_data)
 
+classification_level4 = (classification_array.level3*10.)+(
+                       classification_array.lifeform_veg_cat_l4a)
+
 pixel_id, red, green, blue, alpha = lccs_l4.get_combined_level4(classification_array)
 
 write_rgb_cog(classification_data, red, green, blue, out_level4_rgb_file)
@@ -480,62 +483,36 @@ print(f"Saved Level 4 RGB to {out_level4_rgb_file}")
 ## Select out blue carbon ecosystems (mangrove, saltmarsh, supratidal forests) from level 3 and 4 ##
 
 print("Selecting out Blue Carbon Ecosystems")
-# ### 1. Mangrove
+# ### 1. Mangrove ecosystem
 # - level 3 == 124
+# - lifeform == 1
+# - GMW == 1
 
-mangrove = level3_ds.level3 == 124
+mangrove_class = (level3_ds.level3.where((classification_array.level3 == 124) & (
+                    classification_array.lifeform_veg_cat_l4a == 1) & (
+                    mangrove == 1))*0+1).fillna(0)
 
-# ### 2. Saltmarsh
-# - level 3 == 112
-# - DEM < 10m
-# - WCF < 0.5
+# ### 2. Tidal woody ecosystem
+# - level 3 == 124
+# - lifeform == 1
+# - GMW == 0
 
-# level 3
-naturalveg = level3_ds.level3 == 112
+tidal_woody_class = (level3_ds.level3.where((classification_array.level3 == 124) & (
+                    classification_array.lifeform_veg_cat_l4a == 1) & (
+                    mangrove != 1))*0+2).fillna(0)
 
-# load DEM
-product = catalog["DEM"]
-# don't need time in the query for loading DEM
-DEM = product.load(dc, **{k: v for k, v in query.items() if k != "time"})
+# ### 3. Saltmarsh ecosystem
+# - level 3 == 124
+# - lifeform == 2
 
-elevation = DEM.elevation.squeeze()
-
-# greater than 1m AHD and less than 20m AHD == True
-elev_min = 1
-elev_max = 20
-
-lessthan10m = elevation <= elev_max
-greaterthan1m = elevation >= elev_min
-elev_threshold = lessthan10m & greaterthan1m
-
-# WCF
-lifeform = wcf_da.copy()
-# threshold of woody and non woody vegetation
-lifeform.values = np.where(lifeform < 0.5, 1, 0)
-
-saltmarsh = xr.where(
-    (naturalveg == False) + (elev_threshold == False) + (lifeform == False), 0, 2
-).astype("int8")
-
-# ### 3. Supratidal forests
-# - level 3 == 112 (from saltmarsh)
-# - DEM < 10m (from saltmarsh)
-# - WCF > 0.5
-
-# WCF
-lifeform = wcf_da.copy()
-# threshold of woody and non woody vegetation
-lifeform.values = np.where(lifeform > 0.5, 1, 0)
-
-stf = xr.where(
-    (naturalveg == False) + (elev_threshold == False) + (lifeform == False), 0, 3
-).astype("int8")
+saltmarsh_class = (level3_ds.level3.where((classification_array.level3 == 124) & (
+                    classification_array.lifeform_veg_cat_l4a == 2))*0+3).fillna(0)
 
 # ## <font color=blue>Blue carbon ecosystems</font>
 
 # combine
-bce = mangrove + saltmarsh + stf
-bce = bce.where(bce != 0, np.nan)
+bce = mangrove_class + saltmarsh_class + tidal_woody_class
+bce = BCE.where(bce !=0, classification_level4)
 
 
 write_cog(bce, out_bce_file)
