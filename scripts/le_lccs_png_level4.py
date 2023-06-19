@@ -40,6 +40,7 @@ from datacube.utils.aws import configure_s3_access
 PNG_COASTAL_TILES_S3 = "/home/jovyan/data/png_0_25_deg_tiles_coast.gpkg"
 GMW_2020_S3 = "/home/jovyan/data/gmw_v3_2020_vec_png.gpkg"
 TIDAL_WETLAND_S3 = "/home/jovyan/data/Tidal_wetland_Murray_20172019_30m_PNG.tif"
+OSM_S3 = "/home/jovyan/data/papua-new-guinea.gpkg"
 
 # Force using S3 (e.g., for testing)
 FORCE_S3 = False
@@ -54,6 +55,10 @@ if not os.path.isfile(GMW_2020_S3) or FORCE_S3:
 if not os.path.isfile(TIDAL_WETLAND_S3) or FORCE_S3:
     TIDAL_WETLAND_S3 = (
         "s3://oa-bluecarbon-work-easi/livingearth-png/Tidal_wetland_Murray_20172019_30m_PNG.tif"
+    )
+if not os.path.isfile(OSM_S3) or FORCE_S3:
+    OSM_S3 = (
+        "s3://oa-bluecarbon-work-easi/livingearth-png/papua-new-guinea.gpkg"
     )
 
 print(f"Loading tiles from {PNG_COASTAL_TILES_S3}")
@@ -306,7 +311,61 @@ cultman_agr_cat_ds = cultman.to_dataset(
 
 # ### 4. Natural Surfaces / Artificial Surfaces
 
-# NONE
+# load in OSM vector data just for AOI extent
+OSM_blds = gpd.read_file(OSM_S3, layer='buildings', bbox=bbox)
+OSM_airports = gpd.read_file(OSM_S3, layer='aeroway_ln', bbox=bbox)
+OSM_roads = gpd.read_file(OSM_S3, layer='highway_ln', bbox=bbox)
+
+# get bbox to get geom of gdf
+xmin, ymin, xmax, ymax = bbox
+
+# Check if the vector dataset is empty
+if OSM_blds.empty:
+    # If the vector dataset is empty, create a raster of zeros matching the shape of the geomedians
+    OSM_blds_xr = xr.DataArray(
+        np.zeros_like(wofs_mask),
+        coords=wofs_mask.coords,
+        dims=wofs_mask.dims,
+        attrs=wofs_mask.attrs,
+    )
+else:
+    OSM_blds_AOI = OSM_blds.cx[xmin:xmax, ymin:ymax]
+    OSM_blds_xr = xr_rasterize(gdf=OSM_blds_AOI, da=wofs_mask)
+
+# Check if the vector dataset is empty
+if OSM_airports.empty:
+    # If the vector dataset is empty, create a raster of zeros matching the shape of the geomedians
+    OSM_airports_xr = xr.DataArray(
+        np.zeros_like(wofs_mask),
+        coords=wofs_mask.coords,
+        dims=wofs_mask.dims,
+        attrs=wofs_mask.attrs,
+    )
+else:
+    OSM_airports_AOI = OSM_airports.cx[xmin:xmax, ymin:ymax]
+    OSM_airports_xr = xr_rasterize(gdf=OSM_airports_AOI, da=wofs_mask)
+
+    # Check if the vector dataset is empty
+if OSM_roads.empty:
+    # If the vector dataset is empty, create a raster of zeros matching the shape of the geomedians
+    OSM_roads_xr = xr.DataArray(
+        np.zeros_like(wofs_mask),
+        coords=wofs_mask.coords,
+        dims=wofs_mask.dims,
+        attrs=wofs_mask.attrs,
+    )
+else:
+    # only selecting out roads that are sealed and fit the taxonomy of artificial surfaces
+    OSM_roads_filtered = OSM_roads[OSM_roads['highway'].isin(['primary', 'primary_link', 'secondary', 'secondary_link', 'trunk', 'trunk_link'])]
+    OSM_roads_AOI = OSM_roads.cx[xmin:xmax, ymin:ymax]
+    OSM_roads_xr = xr_rasterize(gdf=OSM_roads_AOI, da=wofs_mask)
+
+# combine OSM xarrays
+OSM_xr = xr.where((OSM_blds_xr == 1) | (OSM_airports_xr == 1) | (OSM_roads_xr == 1), 1, 0)
+
+# Convert to Dataset and add name
+artific_urb_cat_ds = OSM_xr.to_dataset(
+    name="artific_urb_cat")
 
 # ### 5. Natural Water / Artificial Water
 
@@ -318,7 +377,7 @@ variables_xarray_list = []
 variables_xarray_list.append(vegetat_veg_cat_ds)
 variables_xarray_list.append(aquatic_wat_cat_ds)
 variables_xarray_list.append(cultman_agr_cat_ds)
-# variables_xarray_list.append(artific_urb_cat_ds)
+variables_xarray_list.append(artific_urb_cat_ds)
 # variables_xarray_list.append(artwatr_wat_cat_ds)
 
 # **The LCCS classification is hierarchical. The 8 classes are shown below**
