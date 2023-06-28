@@ -487,10 +487,9 @@ classification_array = lccs_l4.classify_lccs_level4(l4_classification_data)
 classification_level4 = (classification_array.level3*10.)+(
                        classification_array.lifeform_veg_cat_l4a)
 
-pixel_id, red, green, blue, alpha = lccs_l4.get_combined_level4(classification_array)
-
 # The following code lines were not working in .ipynb, so commented in script as well
 # TO DO: Need to be fixed
+# pixel_id, red, green, blue, alpha = lccs_l4.get_combined_level4(classification_array)
 # write_rgb_cog(classification_data, red, green, blue, out_level4_rgb_file)
 # print(f"Saved Level 4 RGB to {out_level4_rgb_file}")
 
