@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """
 A script to run through the LCCS classification system for PNG.
-Notebook written by Chris Owers (Chris.Owers@newcastle.edu.au), converted to script by Dan Clewley (dac@pml.ac.uk)
+Notebook written by Chris Owers (Chris.Owers@newcastle.edu.au) and Carole Planque (cap33@aber.ac.uk)
+Converted to script by Dan Clewley (dac@pml.ac.uk) and Carole Planque (cap33@aber.ac.uk)
 """
 import argparse
 import os
@@ -416,6 +417,20 @@ out_class_xarray = xr.Dataset(
 )
 classification_data = xr.merge([classification_data, out_class_xarray])
 
+# Creating an array of non-valid bare surface because of the wofs' nan issue
+classification_nan = ((classification_data.level3.where(
+                            (classification_data.level3==216) & 
+                            (wofs.frequency.isnull())))*0).fillna(1)
+
+# Filtering non-valid bare surface (i.e, due to NaN in WOFs) out of level 2 and level 3
+# Level2 set to zero where WOFs is NaN (i.e., info on water/terrestrial in non-veg areas isn't valid)
+classification_data["level2"] = classification_data.level2 * classification_nan
+
+# Set Level3 to Level1 value where Level2 is zero
+classification_data["level3"] = ((classification_data.level3.where((classification_data.level1==200) & (
+                                    classification_data.level2==0))*0+200).fillna(0) + (
+                                classification_data.level3.where(classification_data.level2!=0).fillna(0)))
+
 red, green, blue, alpha = lccs_l3.colour_lccs_level3(classification_data.level3.values)
 write_rgb_cog(classification_data, red, green, blue, out_level3_rgb_file)
 print(f"Saved Level 3 RGB to {out_level3_rgb_file}")
@@ -450,9 +465,6 @@ lifeform_veg_cat_ds = lifeform.to_dataset(
     name="lifeform_veg_cat"
 ).squeeze()  # .drop('time')
 
-lifeform_veg_cat_ds.lifeform_veg_cat.plot()
-
-
 # ### 4. Canopy cover
 # <font color=red>**TODO:** could do this using fractional cover if we wanted </font>
 
@@ -477,10 +489,12 @@ classification_level4 = (classification_array.level3*10.)+(
 
 pixel_id, red, green, blue, alpha = lccs_l4.get_combined_level4(classification_array)
 
-write_rgb_cog(classification_data, red, green, blue, out_level4_rgb_file)
-print(f"Saved Level 4 RGB to {out_level4_rgb_file}")
+# The following code lines were not working in .ipynb, so commented in script as well
+# TO DO: Need to be fixed
+# write_rgb_cog(classification_data, red, green, blue, out_level4_rgb_file)
+# print(f"Saved Level 4 RGB to {out_level4_rgb_file}")
 
-## Select out blue carbon ecosystems (mangrove, saltmarsh, supratidal forests) from level 3 and 4 ##
+## Select out blue carbon ecosystems (mangrove, saltmarsh, tidal woody area) from level 3 and 4 ##
 
 print("Selecting out Blue Carbon Ecosystems")
 # ### 1. Mangrove ecosystem
