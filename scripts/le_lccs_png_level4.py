@@ -38,7 +38,7 @@ from datacube.utils.cog import write_cog
 from datacube.utils.aws import configure_s3_access
 
 # Check for local versions of files, if not use S3 buckets
-PNG_COASTAL_TILES_S3 = "/home/jovyan/data/png_0_25_deg_tiles_coast.gpkg"
+PNG_COASTAL_TILES_S3 = "/home/jovyan/data/png_0_25_deg_tiles_coast_edit_anet.gpkg"
 GMW_2020_S3 = "/home/jovyan/data/gmw_v3_2020_vec_png.gpkg"
 TIDAL_WETLAND_S3 = "/home/jovyan/data/Tidal_wetland_Murray_20172019_30m_PNG.tif"
 OSM_S3 = "/home/jovyan/data/papua-new-guinea.gpkg"
@@ -48,7 +48,7 @@ WOODY_S3 = "/home/jovyan/data/Woodyarti_30m_PNG.tif"
 FORCE_S3 = False
 if not os.path.isfile(PNG_COASTAL_TILES_S3) or FORCE_S3:
     PNG_COASTAL_TILES_S3 = (
-        "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_25_deg_tiles_coast.gpkg"
+        "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_25_deg_tiles_coast_edit_anet.gpkg"
     )
 if not os.path.isfile(GMW_2020_S3) or FORCE_S3:
     GMW_2020_S3 = (
