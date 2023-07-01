@@ -26,7 +26,9 @@ from le_lccs.le_classification import lccs_l3
 from le_lccs.le_classification import lccs_l4
 
 # for virtual products
-sys.path.insert(1, os.path.abspath("../le_plugins"))
+sys.path.insert(
+    1, os.path.abspath(os.path.join(os.path.dirname(__file__), "../le_plugins"))
+)
 import importlib
 from datacube.virtual import catalog_from_file
 from datacube.virtual import DEFAULT_RESOLVER
@@ -47,31 +49,26 @@ WOODY_S3 = "/home/jovyan/data/Woodyarti_30m_PNG.tif"
 # Force using S3 (e.g., for testing)
 FORCE_S3 = False
 if not os.path.isfile(PNG_COASTAL_TILES_S3) or FORCE_S3:
-    PNG_COASTAL_TILES_S3 = (
-        "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_25_deg_tiles_coast_edit_anet.gpkg"
-    )
+    PNG_COASTAL_TILES_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_25_deg_tiles_coast_edit_anet.gpkg"
 if not os.path.isfile(GMW_2020_S3) or FORCE_S3:
     GMW_2020_S3 = (
         "s3://oa-bluecarbon-work-easi/livingearth-png/gmw_v3_2020_vec_png.gpkg"
     )
 if not os.path.isfile(TIDAL_WETLAND_S3) or FORCE_S3:
-    TIDAL_WETLAND_S3 = (
-        "s3://oa-bluecarbon-work-easi/livingearth-png/Tidal_wetland_Murray_20172019_30m_PNG.tif"
-    )
+    TIDAL_WETLAND_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/Tidal_wetland_Murray_20172019_30m_PNG.tif"
 if not os.path.isfile(OSM_S3) or FORCE_S3:
-    OSM_S3 = (
-        "s3://oa-bluecarbon-work-easi/livingearth-png/papua-new-guinea.gpkg"
-    )
+    OSM_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/papua-new-guinea.gpkg"
 if not os.path.isfile(WOODY_S3) or FORCE_S3:
-    WOODY_S3 = (
-        "s3://oa-bluecarbon-work-easi/livingearth-png/Woodyarti_30m_PNG.tif"
-    )
+    WOODY_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/Woodyarti_30m_PNG.tif"
 
 print(f"Loading tiles from {PNG_COASTAL_TILES_S3}")
 print(f"Loading GMW from {GMW_2020_S3}")
 print(f"Loading Tidal Wetlands from {TIDAL_WETLAND_S3}")
+print(f"Loading OSM from {OSM_S3}")
+print(f"Loading woody layer from {WOODY_S3}")
 
-print(f'Will use caching proxy at: {os.environ.get("GDAL_HTTP_PROXY")}')
+if os.environ.get("GDAL_HTTP_PROXY") is not None:
+    print(f'Will use caching proxy at: {os.environ.get("GDAL_HTTP_PROXY")}')
 
 
 def write_rgb_cog(classification_data, red, green, blue, out_filename):
@@ -130,7 +127,13 @@ args = parser.parse_args()
 dc = datacube.Datacube(app="level3")
 
 # virtual product catalog
-catalog = catalog_from_file(os.path.abspath("../le_plugins/virtual_product_cat.yaml"))
+catalog = catalog_from_file(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "../le_plugins/virtual_product_cat.yaml"
+        )
+    )
+)
 
 # Configure AWS access
 configure_s3_access(aws_unsigned=False, requester_pays=True)
@@ -220,8 +223,10 @@ wofs = masking.mask_invalid_data(wofs)
 wofs_mask = wofs["frequency"] >= 0.2
 
 # Create binary layer representing vegetated (1) and non-vegetated (0)
-vegetat = ((fractional_cover["PV_PC_90"] > 25).fillna(0) - (fractional_cover["NPV_PC_90"] > 25).fillna(0))
-vegetat = (vegetat.where(vegetat>0)*0+1).fillna(0)
+vegetat = (fractional_cover["PV_PC_90"] > 25).fillna(0) - (
+    fractional_cover["NPV_PC_90"] > 25
+).fillna(0)
+vegetat = (vegetat.where(vegetat > 0) * 0 + 1).fillna(0)
 
 # mask out water here
 vegetat = vegetat.where(wofs_mask == 0, 0, 1)
@@ -283,15 +288,15 @@ else:
 tidal_wetland = rio_slurp_xarray(TIDAL_WETLAND_S3, gbox=vegetat_veg_cat_ds.geobox)
 
 # Threshold probability layer to 50%
-tidal_wetland_extent = ((tidal_wetland.where(tidal_wetland>50))*0+1).fillna(0)
+tidal_wetland_extent = ((tidal_wetland.where(tidal_wetland > 50)) * 0 + 1).fillna(0)
 
 # Remove mudflats from Murray's layer
 tidal_wetland_veg = vegetat_veg_cat_ds.vegetat_veg_cat * tidal_wetland_extent
 
 # Create binary layer representing aquatic (1) and terrestrial (0)
 # For coastal landscapes use the following
-aquatic_wat = (wofs_mask + mangrove + tidal_wetland_veg)
-aquatic_wat = (aquatic_wat.where(aquatic_wat > 0)*0+1).fillna(0)
+aquatic_wat = wofs_mask + mangrove + tidal_wetland_veg
+aquatic_wat = (aquatic_wat.where(aquatic_wat > 0) * 0 + 1).fillna(0)
 
 # Convert to Dataset and add name
 aquatic_wat_cat_ds = aquatic_wat.to_dataset(
@@ -307,8 +312,12 @@ aquatic_wat_cat_ds = aquatic_wat.to_dataset(
 #
 print("Calculating natural vegetation...")
 # Create a raster of zeros
-cultman = xr.DataArray(np.zeros_like(wofs_mask), 
-                       coords=wofs_mask.coords, dims=wofs_mask.dims, attrs=wofs_mask.attrs)
+cultman = xr.DataArray(
+    np.zeros_like(wofs_mask),
+    coords=wofs_mask.coords,
+    dims=wofs_mask.dims,
+    attrs=wofs_mask.attrs,
+)
 
 # Convert to Dataset and add name
 cultman_agr_cat_ds = cultman.to_dataset(
@@ -318,9 +327,9 @@ cultman_agr_cat_ds = cultman.to_dataset(
 # ### 4. Natural Surfaces / Artificial Surfaces
 
 # load in OSM vector data just for AOI extent
-OSM_blds = gpd.read_file(OSM_S3, layer='buildings', bbox=bbox)
-OSM_airports = gpd.read_file(OSM_S3, layer='aeroway_ln', bbox=bbox)
-OSM_roads = gpd.read_file(OSM_S3, layer='highway_ln', bbox=bbox)
+OSM_blds = gpd.read_file(OSM_S3, layer="buildings", bbox=bbox)
+OSM_airports = gpd.read_file(OSM_S3, layer="aeroway_ln", bbox=bbox)
+OSM_roads = gpd.read_file(OSM_S3, layer="highway_ln", bbox=bbox)
 
 # get bbox to get geom of gdf
 xmin, ymin, xmax, ymax = bbox
@@ -362,16 +371,28 @@ if OSM_roads.empty:
     )
 else:
     # only selecting out roads that are sealed and fit the taxonomy of artificial surfaces
-    OSM_roads_filtered = OSM_roads[OSM_roads['highway'].isin(['primary', 'primary_link', 'secondary', 'secondary_link', 'trunk', 'trunk_link'])]
+    OSM_roads_filtered = OSM_roads[
+        OSM_roads["highway"].isin(
+            [
+                "primary",
+                "primary_link",
+                "secondary",
+                "secondary_link",
+                "trunk",
+                "trunk_link",
+            ]
+        )
+    ]
     OSM_roads_AOI = OSM_roads.cx[xmin:xmax, ymin:ymax]
     OSM_roads_xr = xr_rasterize(gdf=OSM_roads_AOI, da=wofs_mask)
 
 # combine OSM xarrays
-OSM_xr = xr.where((OSM_blds_xr == 1) | (OSM_airports_xr == 1) | (OSM_roads_xr == 1), 1, 0)
+OSM_xr = xr.where(
+    (OSM_blds_xr == 1) | (OSM_airports_xr == 1) | (OSM_roads_xr == 1), 1, 0
+)
 
 # Convert to Dataset and add name
-artific_urb_cat_ds = OSM_xr.to_dataset(
-    name="artific_urb_cat")
+artific_urb_cat_ds = OSM_xr.to_dataset(name="artific_urb_cat")
 
 # ### 5. Natural Water / Artificial Water
 
@@ -418,18 +439,30 @@ out_class_xarray = xr.Dataset(
 classification_data = xr.merge([classification_data, out_class_xarray])
 
 # Creating an array of non-valid bare surface because of the wofs' nan issue
-classification_nan = ((classification_data.level3.where(
-                            (classification_data.level3==216) & 
-                            (wofs.frequency.isnull())))*0).fillna(1)
+classification_nan = (
+    (
+        classification_data.level3.where(
+            (classification_data.level3 == 216) & (wofs.frequency.isnull())
+        )
+    )
+    * 0
+).fillna(1)
 
 # Filtering non-valid bare surface (i.e, due to NaN in WOFs) out of level 2 and level 3
 # Level2 set to zero where WOFs is NaN (i.e., info on water/terrestrial in non-veg areas isn't valid)
 classification_data["level2"] = classification_data.level2 * classification_nan
 
 # Set Level3 to Level1 value where Level2 is zero
-classification_data["level3"] = ((classification_data.level3.where((classification_data.level1==200) & (
-                                    classification_data.level2==0))*0+200).fillna(0) + (
-                                classification_data.level3.where(classification_data.level2!=0).fillna(0)))
+# Need to set this later as level4 classification doesn't recognise level3 class 200.
+# classification_data["level3"] = (
+#    classification_data.level3.where(
+#        (classification_data.level1 == 200) & (classification_data.level2 == 0)
+#    )
+#    * 0
+#    + 200
+# ).fillna(0) + (
+#    classification_data.level3.where(classification_data.level2 != 0).fillna(0)
+# )
 
 red, green, blue, alpha = lccs_l3.colour_lccs_level3(classification_data.level3.values)
 write_rgb_cog(classification_data, red, green, blue, out_level3_rgb_file)
@@ -454,10 +487,10 @@ level3_ds = classification_data.level3.to_dataset(name="level3")
 woody_s1_layer = rio_slurp_xarray(WOODY_S3, gbox=vegetat_veg_cat_ds.geobox)
 
 # Merge S1-derived Woody layer and GMW
-woody_layer = (mangrove + woody_s1_layer)
+woody_layer = mangrove + woody_s1_layer
 
 # Convert binary woodyarti layer to lifeform lccs classes
-lifeform = woody_layer.where(woody_layer > 0)*0+1
+lifeform = woody_layer.where(woody_layer > 0) * 0 + 1
 lifeform = lifeform.fillna(2)
 
 # Convert to Dataset and add name
@@ -484,14 +517,26 @@ l4_classification_data = xr.merge(variables_xarray_list)
 # Apply Level 4 classification
 classification_array = lccs_l4.classify_lccs_level4(l4_classification_data)
 
-classification_level4 = (classification_array.level3*10.)+(
-                       classification_array.lifeform_veg_cat_l4a)
+# Set Level3 to Level1 value where Level2 is zero
+classification_data["level3"] = (
+    classification_data.level3.where(
+        (classification_data.level1 == 200) & (classification_data.level2 == 0)
+    )
+    * 0
+    + 200
+).fillna(0) + (
+    classification_data.level3.where(classification_data.level2 != 0).fillna(0)
+)
+
+classification_level4 = (classification_array.level3 * 10.0) + (
+    classification_array.lifeform_veg_cat_l4a
+)
 
 # The following code lines were not working in .ipynb, so commented in script as well
 # TO DO: Need to be fixed
-# pixel_id, red, green, blue, alpha = lccs_l4.get_combined_level4(classification_array)
-# write_rgb_cog(classification_data, red, green, blue, out_level4_rgb_file)
-# print(f"Saved Level 4 RGB to {out_level4_rgb_file}")
+pixel_id, red, green, blue, alpha = lccs_l4.get_combined_level4(classification_array)
+write_rgb_cog(classification_data, red, green, blue, out_level4_rgb_file)
+print(f"Saved Level 4 RGB to {out_level4_rgb_file}")
 
 ## Select out blue carbon ecosystems (mangrove, saltmarsh, tidal woody area) from level 3 and 4 ##
 
@@ -501,31 +546,49 @@ print("Selecting out Blue Carbon Ecosystems")
 # - lifeform == 1
 # - GMW == 1
 
-mangrove_class = (level3_ds.level3.where((classification_array.level3 == 124) & (
-                    classification_array.lifeform_veg_cat_l4a == 1) & (
-                    mangrove == 1))*0+1).fillna(0)
+mangrove_class = (
+    level3_ds.level3.where(
+        (classification_array.level3 == 124)
+        & (classification_array.lifeform_veg_cat_l4a == 1)
+        & (mangrove == 1)
+    )
+    * 0
+    + 1
+).fillna(0)
 
 # ### 2. Tidal woody ecosystem
 # - level 3 == 124
 # - lifeform == 1
 # - GMW == 0
 
-tidal_woody_class = (level3_ds.level3.where((classification_array.level3 == 124) & (
-                    classification_array.lifeform_veg_cat_l4a == 1) & (
-                    mangrove != 1))*0+2).fillna(0)
+tidal_woody_class = (
+    level3_ds.level3.where(
+        (classification_array.level3 == 124)
+        & (classification_array.lifeform_veg_cat_l4a == 1)
+        & (mangrove != 1)
+    )
+    * 0
+    + 2
+).fillna(0)
 
 # ### 3. Saltmarsh ecosystem
 # - level 3 == 124
 # - lifeform == 2
 
-saltmarsh_class = (level3_ds.level3.where((classification_array.level3 == 124) & (
-                    classification_array.lifeform_veg_cat_l4a == 2))*0+3).fillna(0)
+saltmarsh_class = (
+    level3_ds.level3.where(
+        (classification_array.level3 == 124)
+        & (classification_array.lifeform_veg_cat_l4a == 2)
+    )
+    * 0
+    + 3
+).fillna(0)
 
 # ## <font color=blue>Blue carbon ecosystems</font>
 
 # combine
 bce = mangrove_class + saltmarsh_class + tidal_woody_class
-bce = BCE.where(bce !=0, classification_level4)
+bce = bce.where(bce != 0, classification_level4)
 
 
 write_cog(bce, out_bce_file)
