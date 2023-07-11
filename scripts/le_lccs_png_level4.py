@@ -107,6 +107,51 @@ def write_rgb_cog(classification_data, red, green, blue, out_filename):
     rgb_dataset.close()
 
 
+def write_data_cog(classification_data, out_filename):
+    """ "
+    Write out data as a cloud optimised GeoTiff with the following bands:
+
+    B1 level 1
+    B2 level 2
+    B3 level 3
+    B4 level 4
+    B5 blue carbon ecosystems and level 4
+
+    """
+    min_x = classification_data.coords["x"].min().values
+    max_x = classification_data.coords["x"].max().values
+    min_y = classification_data.coords["y"].min().values
+    max_y = classification_data.coords["y"].max().values
+
+    res_x = 30
+    res_y = -30
+    crs = "EPSG:32755"
+    # Write out
+    out_file_transform = [res_x, 0, min_x, 0, res_y, max_y]
+    output_x_size = int((max_x - min_x) / res_x)
+    output_y_size = int((min_y - max_y) / res_y)
+
+    # Write RGB colour scheme out
+    data_dataset = rasterio.open(
+        out_filename,
+        "w",
+        driver="COG",
+        height=output_y_size,
+        width=output_x_size,
+        count=5,
+        dtype=np.uint8,
+        crs=crs,
+        transform=out_file_transform,
+    )
+    # Write out data
+    data_dataset.write(np.rot90(classification_data["level1"].values, 2), 1)
+    data_dataset.write(np.rot90(classification_data["level2"].values, 2), 2)
+    data_dataset.write(np.rot90(classification_data["level3"].values, 2), 3)
+    data_dataset.write(np.rot90(classification_data["level4"].values, 2), 4)
+    data_dataset.write(np.rot90(classification_data["bce"].values, 2), 5)
+    data_dataset.close()
+
+
 parser = argparse.ArgumentParser(
     description="Run PNG LCCS Classification for a specified tile "
 )
@@ -151,8 +196,8 @@ out_level3_rgb_file = os.path.join(
 out_level4_rgb_file = os.path.join(
     args.outdir, f"png_lccs_classification_v0_1_level4_rgb_tile_{args.tile_id:03}.tif"
 )
-out_bce_file = os.path.join(
-    args.outdir, f"png_lccs_classification_v0_1_bce_tile_{args.tile_id:03}.tif"
+out_data_file = os.path.join(
+    args.outdir, f"png_lccs_classification_v0_1_data_tile_{args.tile_id:03}.tif"
 )
 
 
@@ -162,7 +207,8 @@ longitude = (float(tile_gdf.bounds.minx), float(tile_gdf.bounds.maxx))
 
 # Set up time
 # TODO: read this from the command line
-time = ("2020-01-01", "2020-12-31")
+# time = ("2020-01-01", "2020-12-31")
+time = ("2020-01-01", "2020-01-31")
 
 crs = "EPSG:32755"
 res = (30, -30)
@@ -590,8 +636,11 @@ saltmarsh_class = (
 bce = mangrove_class + saltmarsh_class + tidal_woody_class
 bce = bce.where(bce != 0, classification_level4)
 
+bce = bce.to_dataset(name="bce")
+classification_level4 = classification_level4.to_dataset(name="level4")
+classification_data = xr.merge([classification_data, classification_level4, bce])
 
-write_cog(bce, out_bce_file)
-print(f"Saved Blue Carbon Ecosystems to {out_bce_file}")
+write_data_cog(classification_data, out_data_file)
 
 print("Classification finished")
+print(f"Wrote output to {out_data_file}")
