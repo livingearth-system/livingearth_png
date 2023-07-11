@@ -207,8 +207,7 @@ longitude = (float(tile_gdf.bounds.minx), float(tile_gdf.bounds.maxx))
 
 # Set up time
 # TODO: read this from the command line
-# time = ("2020-01-01", "2020-12-31")
-time = ("2020-01-01", "2020-01-31")
+time = ("2020-01-01", "2020-12-31")
 
 crs = "EPSG:32755"
 res = (30, -30)
