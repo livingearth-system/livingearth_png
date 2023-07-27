@@ -200,6 +200,10 @@ out_data_file = os.path.join(
     args.outdir, f"png_lccs_classification_v0_1_data_tile_{args.tile_id:03}.tif"
 )
 
+# Check if alreadt have output
+if os.path.isfile(out_data_file):
+    print(f"Output file {out_data_file} exists. Please remove if you want to run again")
+    sys.exit()
 
 # Get bounds for tile
 latitude = (float(tile_gdf.bounds.maxy), float(tile_gdf.bounds.miny))
