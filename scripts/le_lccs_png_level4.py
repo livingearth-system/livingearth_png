@@ -169,26 +169,6 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-dc = datacube.Datacube(app="level3")
-
-# virtual product catalog
-catalog = catalog_from_file(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "../le_plugins/virtual_product_cat.yaml"
-        )
-    )
-)
-
-# Configure AWS access
-configure_s3_access(aws_unsigned=False, requester_pays=True)
-
-# Read in bounds tiles
-bounds_gdf = data = gpd.read_file(PNG_COASTAL_TILES_S3)
-
-# Get polygon for specified tile
-tile_gdf = bounds_gdf[bounds_gdf.id == args.tile_id]
-
 # Set output paths
 out_level3_rgb_file = os.path.join(
     args.outdir, f"png_lccs_classification_v0_1_level3_rgb_tile_{args.tile_id:03}.tif"
@@ -204,6 +184,29 @@ out_data_file = os.path.join(
 if os.path.isfile(out_data_file):
     print(f"Output file {out_data_file} exists. Please remove if you want to run again")
     sys.exit()
+
+# Connect to datacube
+dc = datacube.Datacube(app="level3")
+
+# virtual product catalog
+catalog = catalog_from_file(
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "../le_plugins/virtual_product_cat.yaml"
+        )
+    )
+)
+
+
+# Configure AWS access
+configure_s3_access(aws_unsigned=False, requester_pays=True)
+
+# Read in bounds tiles
+bounds_gdf = data = gpd.read_file(PNG_COASTAL_TILES_S3)
+
+# Get polygon for specified tile
+tile_gdf = bounds_gdf[bounds_gdf.id == args.tile_id]
+
 
 # Get bounds for tile
 latitude = (float(tile_gdf.bounds.maxy), float(tile_gdf.bounds.miny))
