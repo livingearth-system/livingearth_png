@@ -162,11 +162,30 @@ parser.add_argument(
     "-t",
     "--tile_id",
     type=int,
-    help=f"ID of tile to select from {PNG_COASTAL_TILES_S3}",
+    help=f"ID of tile to select from {PNG_COASTAL_TILES_S3} or file specified with '--tile_bounds'.",
     required=True,
     default=None,
 )
-
+parser.add_argument(
+    "--tile_bounds",
+    help="Vector file with bounds of tiles.",
+    required=False,
+    default=PNG_COASTAL_TILES_S3,
+)
+parser.add_argument(
+    "--netcdf",
+    help="Write out netCDF file with variables used for classification, useful for debugging.",
+    required=False,
+    default=False,
+    action="store_true",
+)
+parser.add_argument(
+    "--overwrite",
+    help="Overwrite existing classification.",
+    required=False,
+    default=False,
+    action="store_true",
+)
 args = parser.parse_args()
 
 # Set output paths
@@ -179,10 +198,15 @@ out_level4_rgb_file = os.path.join(
 out_data_file = os.path.join(
     args.outdir, f"png_lccs_classification_v0_1_data_tile_{args.tile_id:03}.tif"
 )
+out_data_netcdf = os.path.join(
+    args.outdir, f"png_lccs_classification_v0_1_data_tile_{args.tile_id:03}_netcdf.nc"
+)
 
 # Check if alreadt have output
-if os.path.isfile(out_data_file):
-    print(f"Output file {out_data_file} exists. Please remove if you want to run again")
+if os.path.isfile(out_data_file) and not args.overwrite:
+    print(
+        f"Output file {out_data_file} exists. Please remove or set '--overwrite' flag if you want to run again"
+    )
     sys.exit()
 
 # Connect to datacube
@@ -202,7 +226,7 @@ catalog = catalog_from_file(
 configure_s3_access(aws_unsigned=False, requester_pays=True)
 
 # Read in bounds tiles
-bounds_gdf = data = gpd.read_file(PNG_COASTAL_TILES_S3)
+bounds_gdf = data = gpd.read_file(args.tile_bounds)
 
 # Get polygon for specified tile
 tile_gdf = bounds_gdf[bounds_gdf.id == args.tile_id]
@@ -226,6 +250,10 @@ query = {
     "output_crs": crs,
     "resolution": res,
 }
+
+print(
+    f"Running for tile {args.tile_id}. Extent {latitude[0]} - {latitude[1]} N, {longitude[0]} - {longitude[1]} E..."
+)
 
 # ### 1. Vegetated / Non-Vegetated
 
@@ -647,6 +675,14 @@ classification_level4 = classification_level4.to_dataset(name="level4")
 classification_data = xr.merge([classification_data, classification_level4, bce])
 
 write_data_cog(classification_data, out_data_file)
-
 print("Classification finished")
 print(f"Wrote output to {out_data_file}")
+
+if args.netcdf:
+    classification_data.to_netcdf(
+        out_data_netcdf,
+        encoding={
+            var: {"zlib": True, "complevel": 4} for var in classification_data.data_vars
+        },
+    )
+    print(f"Wrote output netCDF to {out_data_netcdf}")
