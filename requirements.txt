@@ -1,6 +1,6 @@
 --extra-index-url=https://packages.dea.ga.gov.au
 dask==2023.6.0
-datacube==1.8
+datacube==1.8.12
 dea-tools==0.2.7
 digitalearthau==20220517
 fc==1.3.9
