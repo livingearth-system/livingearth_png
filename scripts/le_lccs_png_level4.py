@@ -309,7 +309,7 @@ vegetat = (fractional_cover["PV_PC_90"] > 25).fillna(0) - (
 vegetat = (vegetat.where(vegetat > 0) * 0 + 1).fillna(0)
 
 # mask out water here
-vegetat = vegetat.where(wofs_mask == 0, 0, 1)
+vegetat = (vegetat.where(wofs_mask > 0)*0+1).fillna(0)
 
 # Convert to Dataset and add name
 vegetat_veg_cat_ds = vegetat.to_dataset(
