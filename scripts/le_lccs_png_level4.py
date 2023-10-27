@@ -131,7 +131,7 @@ def write_data_cog(classification_data, out_filename):
     output_x_size = int((max_x - min_x) / res_x)
     output_y_size = int((min_y - max_y) / res_y)
 
-    # Write RGB colour scheme out
+    # Write data out
     data_dataset = rasterio.open(
         out_filename,
         "w",
@@ -139,7 +139,7 @@ def write_data_cog(classification_data, out_filename):
         height=output_y_size,
         width=output_x_size,
         count=5,
-        dtype=np.uint8,
+        dtype=np.int16,
         crs=crs,
         transform=out_file_transform,
     )
