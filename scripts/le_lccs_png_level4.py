@@ -608,7 +608,7 @@ classification_data["level3"] = (
     classification_data.level3.where(classification_data.level2 != 0).fillna(0)
 )
 
-classification_level4 = (classification_array.level3 * 10.0) + (
+classification_level4 = (classification_data.level3 * 10.0) + (
     classification_array.lifeform_veg_cat_l4a
 )
 
