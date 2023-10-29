@@ -46,6 +46,21 @@ TIDAL_WETLAND_S3 = "/home/jovyan/data/Tidal_wetland_Murray_20172019_30m_PNG.tif"
 OSM_S3 = "/home/jovyan/data/papua-new-guinea.gpkg"
 WOODY_S3 = "/home/jovyan/data/Woodyarti_30m_PNG.tif"
 
+# Colour scheme
+PNG_BCE_COLOUR_SCHEME = {
+    1: (54, 168, 109, 255),
+    2: (26, 135, 69, 255),
+    3: (117, 227, 167, 255),
+    1121: (27, 105, 36, 255),
+    1122: (136, 230, 115, 255),
+    1241: (26, 135, 69, 255),
+    1242: (96, 189, 150, 255),
+    2000: (177, 169, 186, 255),
+    2150: (230, 90, 90, 255),
+    2160: (201, 165, 113, 255),
+    2200: (85, 178, 224, 255),
+}
+
 # Force using S3 (e.g., for testing)
 FORCE_S3 = False
 if not os.path.isfile(PNG_COASTAL_TILES_S3) or FORCE_S3:
@@ -69,6 +84,31 @@ print(f"Loading woody layer from {WOODY_S3}")
 
 if os.environ.get("GDAL_HTTP_PROXY") is not None:
     print(f'Will use caching proxy at: {os.environ.get("GDAL_HTTP_PROXY")}')
+
+
+def colour_blue_carbon_ecosystems(classification_array):
+    """ "
+    Colour blue carbon ecosystems classification aray
+    colour scheme. Returns four arays:
+
+    * red
+    * green
+    * blue
+    * alpha
+
+    :param np.array classification_array: numpy array containing bcce classification.
+
+    """
+    red = np.zeros_like(classification_array, dtype=np.uint8)
+    green = np.zeros_like(red)
+    blue = np.zeros_like(red)
+    alpha = np.zeros_like(red)
+
+    for class_id, colours in PNG_BCE_COLOUR_SCHEME.items():
+        subset = classification_array == class_id
+        red[subset], green[subset], blue[subset], alpha[subset] = colours
+
+    return red, green, blue, alpha
 
 
 def write_rgb_cog(classification_data, red, green, blue, out_filename):
@@ -189,11 +229,8 @@ parser.add_argument(
 args = parser.parse_args()
 
 # Set output paths
-out_level3_rgb_file = os.path.join(
-    args.outdir, f"png_lccs_classification_v0_1_level3_rgb_tile_{args.tile_id:03}.tif"
-)
-out_level4_rgb_file = os.path.join(
-    args.outdir, f"png_lccs_classification_v0_1_level4_rgb_tile_{args.tile_id:03}.tif"
+out_bce_rgb_file = os.path.join(
+    args.outdir, f"png_lccs_classification_v0_1_bce_rgb_tile_{args.tile_id:03}.tif"
 )
 out_data_file = os.path.join(
     args.outdir, f"png_lccs_classification_v0_1_data_tile_{args.tile_id:03}.tif"
@@ -309,7 +346,7 @@ vegetat = (fractional_cover["PV_PC_90"] > 25).fillna(0) - (
 vegetat = (vegetat.where(vegetat > 0) * 0 + 1).fillna(0)
 
 # mask out water here
-vegetat = (vegetat.where(wofs_mask == 0)*0+vegetat).fillna(0)
+vegetat = (vegetat.where(wofs_mask == 0) * 0 + vegetat).fillna(0)
 
 # Convert to Dataset and add name
 vegetat_veg_cat_ds = vegetat.to_dataset(
@@ -544,9 +581,6 @@ classification_data["level2"] = classification_data.level2 * classification_nan
 #    classification_data.level3.where(classification_data.level2 != 0).fillna(0)
 # )
 
-red, green, blue, alpha = lccs_l3.colour_lccs_level3(classification_data.level3.values)
-write_rgb_cog(classification_data, red, green, blue, out_level3_rgb_file)
-print(f"Saved Level 3 RGB to {out_level3_rgb_file}")
 
 # Convert level3 to Dataset and add name
 level3_ds = classification_data.level3.to_dataset(name="level3")
@@ -581,7 +615,7 @@ lifeform_veg_cat_ds = lifeform.to_dataset(
 # ### 4. Canopy cover
 # <font color=red>**TODO:** could do this using fractional cover if we wanted </font>
 
-# ## <font color=blue>Level 4 classification</font>
+## Level 4 classification ##
 
 print("Running Level 4 Classification...")
 variables_xarray_list = []
@@ -611,12 +645,6 @@ classification_data["level3"] = (
 classification_level4 = (classification_data.level3 * 10.0) + (
     classification_array.lifeform_veg_cat_l4a
 )
-
-# The following code lines were not working in .ipynb, so commented in script as well
-# TO DO: Need to be fixed
-pixel_id, red, green, blue, alpha = lccs_l4.get_combined_level4(classification_array)
-write_rgb_cog(classification_data, red, green, blue, out_level4_rgb_file)
-print(f"Saved Level 4 RGB to {out_level4_rgb_file}")
 
 ## Select out blue carbon ecosystems (mangrove, saltmarsh, tidal woody area) from level 3 and 4 ##
 
@@ -677,6 +705,10 @@ classification_data = xr.merge([classification_data, classification_level4, bce]
 write_data_cog(classification_data, out_data_file)
 print("Classification finished")
 print(f"Wrote output to {out_data_file}")
+
+red, green, blue, alpha = colour_blue_carbon_ecosystems(classification_data.bce.values)
+write_rgb_cog(classification_data, red, green, blue, out_bce_rgb_file)
+print(f"Saved BCE RGB to {out_bce_rgb_file}")
 
 if args.netcdf:
     classification_data.to_netcdf(
