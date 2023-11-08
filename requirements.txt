@@ -232,6 +232,7 @@ libclang==15.0.6.1
 libpysal==4.7.0
 lightning-utilities==0.7.1
 line-profiler==4.0.3
+LivingEarth-LCCS @ git+https://bitbucket.org/au-eoed/livingearth_lccs.git
 llvmlite==0.39.1
 lmdb==1.4.0
 lmfit==1.1.0
