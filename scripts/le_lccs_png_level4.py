@@ -40,7 +40,7 @@ from datacube.utils.cog import write_cog
 from datacube.utils.aws import configure_s3_access
 
 # Check for local versions of files, if not use S3 buckets
-PNG_COASTAL_TILES_S3 = "/home/jovyan/data/png_0_25_deg_tiles_coast_edit_anet.gpkg"
+PNG_TILES_S3 = "/home/jovyan/data/png_0_25_deg_tiles_coast_edit_anet.gpkg"
 GMW_2020_S3 = "/home/jovyan/data/gmw_v3_2020_vec_png.gpkg"
 TIDAL_WETLAND_S3 = "/home/jovyan/data/Tidal_wetland_Murray_20172019_30m_PNG.tif"
 OSM_S3 = "/home/jovyan/data/papua-new-guinea.gpkg"
@@ -63,8 +63,8 @@ PNG_BCE_COLOUR_SCHEME = {
 
 # Force using S3 (e.g., for testing)
 FORCE_S3 = False
-if not os.path.isfile(PNG_COASTAL_TILES_S3) or FORCE_S3:
-    PNG_COASTAL_TILES_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_25_deg_tiles_coast_edit_anet.gpkg"
+if not os.path.isfile(PNG_TILES_S3) or FORCE_S3:
+    PNG_TILES_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_25_deg_tiles.gpkg"
 if not os.path.isfile(GMW_2020_S3) or FORCE_S3:
     GMW_2020_S3 = (
         "s3://oa-bluecarbon-work-easi/livingearth-png/gmw_v3_2020_vec_png.gpkg"
@@ -76,7 +76,7 @@ if not os.path.isfile(OSM_S3) or FORCE_S3:
 if not os.path.isfile(WOODY_S3) or FORCE_S3:
     WOODY_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/Woodyarti_30m_PNG.tif"
 
-print(f"Loading tiles from {PNG_COASTAL_TILES_S3}")
+print(f"Loading tiles from {PNG_TILES_S3}")
 print(f"Loading GMW from {GMW_2020_S3}")
 print(f"Loading Tidal Wetlands from {TIDAL_WETLAND_S3}")
 print(f"Loading OSM from {OSM_S3}")
@@ -202,7 +202,7 @@ parser.add_argument(
     "-t",
     "--tile_id",
     type=int,
-    help=f"ID of tile to select from {PNG_COASTAL_TILES_S3} or file specified with '--tile_bounds'.",
+    help=f"ID of tile to select from {PNG_TILES_S3} or file specified with '--tile_bounds'.",
     required=True,
     default=None,
 )
@@ -210,7 +210,7 @@ parser.add_argument(
     "--tile_bounds",
     help="Vector file with bounds of tiles.",
     required=False,
-    default=PNG_COASTAL_TILES_S3,
+    default=PNG_TILES_S3,
 )
 parser.add_argument(
     "--netcdf",
