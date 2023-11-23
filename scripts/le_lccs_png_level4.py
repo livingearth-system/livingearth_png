@@ -48,17 +48,17 @@ WOODY_S3 = "/home/jovyan/data/Woodyarti_30m_PNG.tif"
 
 # Colour scheme
 PNG_BCE_COLOUR_SCHEME = {
-    1: (54, 168, 109, 255),
-    2: (26, 135, 69, 255),
-    3: (117, 227, 167, 255),
-    1121: (27, 105, 36, 255),
-    1122: (136, 230, 115, 255),
-    1241: (26, 135, 69, 255),
-    1242: (96, 189, 150, 255),
-    2000: (177, 169, 186, 255),
-    2150: (230, 90, 90, 255),
-    2160: (201, 165, 113, 255),
-    2200: (85, 178, 224, 255),
+    1: (54, 168, 109, 255),     # mangrove
+    2: (26, 135, 69, 255),      # tidally influenced forests
+    3: (117, 227, 167, 255),    # saltmarsh
+    1121: (27, 105, 36, 255),   # natural terrestrial woody vegetation
+    1122: (136, 230, 115, 255), # natural terrestrial herbaceous vegetation
+    1241: (26, 135, 69, 255),   # natural aquatic woody vegetation
+    1242: (96, 189, 150, 255),  # natural aquatic herbaceous vegetation
+    2000: (177, 169, 186, 255), # unvegetated
+    2150: (230, 90, 90, 255),   # artificial surfaces
+    2160: (201, 165, 113, 255), # natural bare surfaces
+    2200: (85, 178, 224, 255),  # waterbodies
 }
 
 # Force using S3 (e.g., for testing)
