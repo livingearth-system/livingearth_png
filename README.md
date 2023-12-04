@@ -60,7 +60,7 @@ FAO LCCS definitions of descriptions can be looked up [here](https://www.fao.org
 
 #### Band 5
 - 1: mangrove
-- 2: tidally influenced woody vegetation
+- 2: tidally influenced forests (woody vegetation)
 - 3: saltmarsh
 - 1121: natural terrestrial woody vegetation
 - 1122: natural terrestrial herbaceous vegetation
