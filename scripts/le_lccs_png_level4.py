@@ -61,6 +61,21 @@ PNG_BCE_COLOUR_SCHEME = {
     2200: (85, 178, 224, 255),  # waterbodies
 }
 
+# # Colour scheme alternative (due to 'greens' from veg being very difficult to distinguish)
+# PNG_BCE_COLOUR_SCHEME = {
+#     1: (79, 125, 46, 255),      # mangrove
+#     2: (130, 56, 6, 255),       # tidally influenced forests
+#     3: (191, 142, 1, 255),      # saltmarsh
+#     1121: (27, 105, 36, 255),   # natural terrestrial woody vegetation
+#     1122: (136, 230, 115, 255), # natural terrestrial herbaceous vegetation
+#     1241: (26, 135, 69, 255),   # natural aquatic woody vegetation
+#     1242: (96, 189, 150, 255),  # natural aquatic herbaceous vegetation
+#     2000: (177, 169, 186, 255), # unvegetated
+#     2150: (230, 90, 90, 255),   # artificial surfaces
+#     2160: (201, 165, 113, 255), # natural bare surfaces
+#     2200: (85, 178, 224, 255),  # waterbodies
+# }
+
 # Force using S3 (e.g., for testing)
 FORCE_S3 = False
 if not os.path.isfile(PNG_TILES_S3) or FORCE_S3:
