@@ -1,0 +1,66 @@
+# Commandline instructions for post processing of .tifs created from le_lccs_png_level4.py script
+# developed by Carole Planque November 2023
+
+# Reproject shapefiles to EPSG:32755 
+# Rasterize coastline  
+gdal_rasterize -co COMPRESS=LZW -burn 1 -te -185175 8681235 1510545 9851055 -tr 30 30 -l gadm36_png_coastline_32755 gadm36_PNG_coastline_32755.gpkg ../../data/gadm36_PNG_coastline_32755.tif  
+ 
+# Rasterize OSM PNG eez layer 
+gdal_rasterize -co COMPRESS=LZW -burn 1 -te -185175 8681235 1510545 9851055 -tr 30 30 -l eez papua-new-guinea_32755.gpkg papua-new-guinea_32755.tif 
+ 
+# Raterize processed areas (inverted) 
+gdal_rasterize -init 0 -l PNG_inland -burn 1.0 -tr 30.0 30.0 -i -te -185175.0 8681235.0 1510545.0 9851055.0 -ot Byte -of GTiff /Users/cap33/Documents/Working_Folder/PNG/data/PNG_inland.shp /Users/cap33/Documents/Working_Folder/PNG/data/PNG_processed_area.tif 
+ 
+# Reclassify noise in water (Band 5) 
+((( "gadm36_PNG_coastline_32755@1" = 0 ) AND (“png_lccs_classification_v0_1_data_merged@5" = 2000))*2200) + ((( "gadm36_PNG_coastline_32755@1" = 0 ) AND (“png_lccs_classification_v0_1_data_merged@5" = 2160))*2200) + ((( "gadm36_PNG_coastline_32755@1" = 1 ) OR (( “png_lccs_classification_v0_1_data_merged@5" != 2160) AND (“png_lccs_classification_v0_1_data_merged@5" != 2000))) * “png_lccs_classification_v0_1_data_merged@5”) 
+ 
+# Reclassify noise in water (Band 4) 
+((( "gadm36_PNG_coastline_32755@1" = 0 ) AND ("png_lccs_classification_v0_1_data_merged@4" = 2000))*2200) + ((( "gadm36_PNG_coastline_32755@1" = 0 ) AND ("png_lccs_classification_v0_1_data_merged@4" = 2160))*2200) + ((( "gadm36_PNG_coastline_32755@1" = 1 ) OR (( "png_lccs_classification_v0_1_data_merged@4" != 2160) AND ("png_lccs_classification_v0_1_data_merged@4" != 2000))) * "png_lccs_classification_v0_1_data_merged@4”) 
+ 
+# Reclassify noise in water (Band 3) 
+((( "gadm36_PNG_coastline_32755@1" = 0 ) AND ("png_lccs_classification_v0_1_data_merged@3" = 200))*220) + ((( "gadm36_PNG_coastline_32755@1" = 0 ) AND ("png_lccs_classification_v0_1_data_merged@3" = 216))*220) + ((( "gadm36_PNG_coastline_32755@1" = 1 ) OR (( "png_lccs_classification_v0_1_data_merged@3" != 216) AND ("png_lccs_classification_v0_1_data_merged@3" != 200))) * "png_lccs_classification_v0_1_data_merged@3”) 
+ 
+# Reclassify noise in water (Band 2) 
+((("png_lccs_classification_v0_1_data_merged@3" != 220) AND ("png_lccs_classification_post_processed_data_band3@1" = 220))*20) + ((("png_lccs_classification_v0_1_data_merged@3" = 220) OR ("png_lccs_classification_post_processed_data_band3@1" != 220))* "png_lccs_classification_v0_1_data_merged@2”) 
+ 
+# Band 1 is staying as it is. Simply exported it to a separate file.
+
+# Mask out inland areas and areas non included in PNG eez from Band 1 
+gdal_calc.py -A png_lccs_classification_post_processed_data_band1.tif -B papua-new-guinea/papua-new-guinea_32755.tif -C PNG_processed_area.tif --outfile=png_lccs_classification_post_processed_data_band1_masked.tif --calc="A*B*C" --type=Int16 --overwrite 
+ 
+# Mask out inland areas and areas non included in PNG eez from Band 2 
+gdal_calc.py -A png_lccs_classification_post_processed_data_band2.tif -B papua-new-guinea/papua-new-guinea_32755.tif -C PNG_processed_area.tif --outfile=png_lccs_classification_post_processed_data_band2_masked.tif --calc="A*B*C" --type=Int16 --overwrite 
+ 
+# Mask out inland areas and areas non included in PNG eez from Band 3 
+gdal_calc.py -A png_lccs_classification_post_processed_data_band3.tif -B papua-new-guinea/papua-new-guinea_32755.tif -C PNG_processed_area.tif --outfile=png_lccs_classification_post_processed_data_band3_masked.tif --calc="A*B*C" --type=Int16 --overwrite 
+ 
+# Mask out inland areas and areas non included in PNG eez from Band 4 
+gdal_calc.py -A png_lccs_classification_post_processed_data_band4.tif -B papua-new-guinea/papua-new-guinea_32755.tif -C PNG_processed_area.tif --outfile=png_lccs_classification_post_processed_data_band4_masked.tif --calc="A*B*C" --type=Int16 --overwrite 
+ 
+# Mask out inland areas and areas non included in PNG eez from Band 5 
+gdal_calc.py -A png_lccs_classification_post_processed_data_band5.tif -B papua-new-guinea/papua-new-guinea_32755.tif -C PNG_processed_area.tif --outfile=png_lccs_classification_post_processed_data_band5_masked.tif --calc="A*B*C" --type=Int16 --overwrite 
+ 
+# Compress Band 1 and set 0 to nan 
+gdal_translate png_lccs_classification_post_processed_data_band1_masked.tif png_lccs_classification_post_processed_data_band1_masked_cog.tif -of COG -co COMPRESS=LZW -co OVERVIEW_RESAMPLING=NEAREST -a_nodata 0 -ot Int16 
+ 
+# Compress Band 2 and set 0 to nan 
+gdal_translate png_lccs_classification_post_processed_data_band2_masked.tif png_lccs_classification_post_processed_data_band2_masked_cog.tif -of COG -co COMPRESS=LZW -co OVERVIEW_RESAMPLING=NEAREST -a_nodata 0 -ot Int16
+ 
+# Compress Band 3 and set 0 to nan 
+gdal_translate png_lccs_classification_post_processed_data_band3_masked.tif png_lccs_classification_post_processed_data_band3_masked_cog.tif -of COG -co COMPRESS=LZW -co OVERVIEW_RESAMPLING=NEAREST -a_nodata 0 -ot Int16 
+ 
+# Compress Band 4 and set 0 to nan 
+gdal_translate png_lccs_classification_post_processed_data_band4_masked.tif png_lccs_classification_post_processed_data_band4_masked_cog.tif -of COG -co COMPRESS=LZW -co OVERVIEW_RESAMPLING=NEAREST -a_nodata 0 -ot Int16 
+ 
+# Compress Band 5 and set 0 to nan 
+gdal_translate png_lccs_classification_post_processed_data_band5_masked.tif png_lccs_classification_post_processed_data_band5_masked_cog.tif -of COG -co COMPRESS=LZW -co OVERVIEW_RESAMPLING=NEAREST -a_nodata 0 -ot Int16 
+ 
+# Merge the five post-processed bands  
+gdal_merge.py -separate -co COMPRESS=LZW png_lccs_classification_post_processed_data_band1_masked_cog.tif png_lccs_classification_post_processed_data_band2_masked_cog.tif png_lccs_classification_post_processed_data_band3_masked_cog.tif png_lccs_classification_post_processed_data_band4_masked_cog.tif png_lccs_classification_post_processed_data_band5_masked_cog.tif -o png_lccs_post_processed_data_masked_merged.tif 
+ 
+# Compress and tile the data file 
+gdal_translate png_lccs_post_processed_data_masked_merged.tif png_lccs_classification_v0_2_data_merged.tif -of COG -co COMPRESS=LZW -co OVERVIEW_RESAMPLING=NEAREST 
+ 
+# Use QGIS to export Band5 (bce)to RGB image 
+# Compress and tile the RGB image 
+gdal_translate png_lccs_post_processed_rgb_masked_merged.tif png_lccs_classification_v0_2_bce_rgb_merged.tif -of COG -co COMPRESS=LZW -co OVERVIEW_RESAMPLING=AVERAGE 
