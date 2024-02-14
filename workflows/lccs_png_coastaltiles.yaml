@@ -1,4 +1,4 @@
-# Usage: argo submit run_lccs_png.yaml
+# Usage: argo -n cenv-bc-argo submit lccs_png_coastaltiles.yaml
 
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
