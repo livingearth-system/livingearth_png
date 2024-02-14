@@ -61,20 +61,20 @@ spec:
       # TODO Replace with values suitable for your deployment environment.
       value: "876569415057.dkr.ecr.ap-southeast-1.amazonaws.com/ecr-public/docker/library/alpine:latest"
     # ADD A CODE REPOSITORY (if not built in the wf_image)
-    # - name: package-repo
-    #   value: "https://github.com/csiro-easi/easi-cookbook"
-    # - name: package-branch
-    #   value: "gridded-workflow"
-    # - name: package-path
-    #   value: "/opt/repo"
-    # - name: package-secret
-    #   value: ""  # git-credentials format, e.g. git-credentials: $(echo -n "https://username:password@dev.azure.com | base64)
+    - name: package-repo
+      value: "https://github.com/livingearth-system/livingearth_png.git"
+    - name: package-branch
+      value: "argo_workflow"
+    - name: package-path
+      value: "/code"
+    - name: package-secret
+      value: ""  # git-credentials format, e.g. git-credentials: $(echo -n "https://username:password@dev.azure.com | base64)
 
   templates:
   - name: start
     steps:
-    - - name: tile-generator
-        template: tile-generator
+    - - name: testing
+        template: testing
         arguments:
           parameters:
           - name: product
@@ -102,31 +102,9 @@ spec:
           - name: git_image
             value: "{{workflow.parameters.git_image}}"
 
-    - - name: tile-processor
-        template: tile-processor
-        arguments:
-          parameters:
-          - name: measurements
-            value: "{{workflow.parameters.measurements}}"
-          - name: output
-            value: "{{workflow.parameters.output}}"
-          - name: key
-            value: "{{item}}"
-          - name: package-repo
-            value: "{{workflow.parameters.package-repo}}"
-          - name: package-branch
-            value: "{{workflow.parameters.package-branch}}"
-          - name: package-path
-            value: "{{workflow.parameters.package-path}}"
-          - name: package-secret
-            value: "{{workflow.parameters.package-secret}}"
-          artifacts:
-          - name: product_cells
-            from: "{{steps.tile-generator.outputs.artifacts.product_cells}}"
-        withParam: "{{steps.tile-generator.outputs.parameters.keys}}"
 
 ##--------------------------------
-  - name: tile-generator
+  - name: testing
     inputs:
       parameters:
       - name: product
@@ -141,14 +119,14 @@ spec:
       - name: package-path          # Top level dir in which sidecar package will be downloaded to, e.g. {{package-path}}/easi-workflows
       - name: package-secret        # Git-credentials format, e.g. git-credentials: $(echo -n "https://username:password@dev.azure.com | base64)
 
-    outputs:
-      parameters:
-      - name: keys
-        valueFrom:
-          path: /tmp/keys.json
-      artifacts:
-      - name: product_cells
-        path: /tmp/product_cells.pickle
+    # outputs:
+    #   parameters:
+    #   - name: keys
+    #     valueFrom:
+    #       path: /tmp/keys.json
+    #   artifacts:
+    #   - name: product_cells
+    #     path: /tmp/product_cells.pickle
 
     activeDeadlineSeconds: 300
     retryStrategy:
@@ -172,10 +150,10 @@ spec:
         command: [/bin/sh, -c]
         args:
           - cd "{{inputs.parameters.package-path}}" &&
-            git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.package-repo}}"
-      # - cd "{{inputs.parameters.package-path}}" &&
-      #   git config --global credential.helper "store --file /secret/git/.git-credentials" &&
-      #   git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.package-repo}}"
+            git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.package-repo}}" .
+          # - cd "{{inputs.parameters.package-path}}" &&
+          #   git config --global credential.helper "store --file /secret/git/.git-credentials" &&
+          #   git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.package-repo}}"
 
 
     script:
@@ -204,119 +182,11 @@ spec:
       # - name: git-secret
       #   mountPath: "/secret/git"
       workingDir: "{{inputs.parameters.package-path}}"
-      command: [python]
+      command: [bash]
       source: |
-        import sys
-        import json
-        import logging
-        from pathlib import Path
+        python /code/scripts/le_lccs_png_level4.py
 
-        package_path = "{{inputs.parameters.package-path}}"
-        package_repo = "{{inputs.parameters.package-repo}}"
-        repo = Path(package_path) / package_repo.split('/')[-1]
-        sys.path.insert(1, str(repo))
 
-        logging.basicConfig(level=logging.INFO)
-
-        from tasks.gridded.tile_generator import TileGenerator
-
-        generator = TileGenerator({{inputs.parameters}})
-        generator.generate_tiles()
-
-        logging.info("Completed tile generation.")
-
-##--------------------------------
-  - name: tile-processor
-    inputs:
-      parameters:
-      - name: measurements
-      - name: output
-      - name: key
-      - name: package-repo          # A sidecar package repo
-      - name: package-branch        # The sidecar package repo branch
-      - name: package-path          # Top level dir in which sidecar package will be downloaded to, e.g. {{package-path}}/easi-workflows
-      - name: package-secret        # Git-credentials format, e.g. git-credentials: $(echo -n "https://username:password@dev.azure.com | base64)
-      artifacts:
-      - name: product_cells
-        path: /tmp/product_cells.pickle
-
-    activeDeadlineSeconds: 3540 # Runtime shouldn't exceed 60 minutes - this is here to allow for Dask scheduler lockups or other issues
-    retryStrategy:
-      limit: "2"
-
-    volumes:
-      - name: git-sync
-        emptyDir: {}
-      # - name: git-secret
-      #   secret:
-      #     secretName: "{{inputs.parameters.package-secret}}"
-      #     items:
-      #       - key: git-credentials
-      #         path: .git-credentials
-
-    initContainers:
-      - name: init0
-        image: "{{workflow.parameters.git_image}}"
-        imagePullPolicy: IfNotPresent
-        mirrorVolumeMounts: false
-        volumeMounts:
-          - name: git-sync
-            mountPath: "{{inputs.parameters.package-path}}"
-          # - name: git-secret
-          #   mountPath: "/secret/git"
-        command: [/bin/sh, -c]
-        args:
-          - cd "{{inputs.parameters.package-path}}" &&
-            git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.package-repo}}"
-          # - cd "{{inputs.parameters.package-path}}" &&
-          #   git config --global credential.helper "store --file /secret/git/.git-credentials" &&
-          #   git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.package-repo}}"
-
-    script:
-      image: "{{workflow.parameters.dask_image}}"
-      imagePullPolicy: Always
-      env:
-        - name: AWS_METADATA_SERVICE_TIMEOUT
-          value: '30'
-        - name: AWS_METADATA_SERVICE_NUM_ATTEMPTS
-          value: '5'
-        - name: DATACUBE_CONFIG_PATH
-          value: "/root/.user-secret-easi-odc-v2/.datacube.conf"
-      volumeMounts:
-        - name: user-secret-easi-odc-v2
-          mountPath: '/root/.user-secret-easi-odc-v2'
-          readOnly: true
-        - name: git-sync
-          mountPath: "{{inputs.parameters.package-path}}"
-        # - name: git-secret
-        #   mountPath: "/secret/git"
-      resources: # limit the resources
-        limits:
-          memory: 32Gi
-          cpu: 4000m
-        requests:
-          memory: 24Gi
-          cpu: 2000m
-      command: [python]
-      source: |
-        if __name__ == "__main__":
-          import sys
-          import json
-          import logging
-          from pathlib import Path
-
-          package_path = "{{inputs.parameters.package-path}}"
-          package_repo = "{{inputs.parameters.package-repo}}"
-          repo = Path(package_path) / package_repo.split('/')[-1]
-          sys.path.insert(1, str(repo))
-
-          logging.basicConfig(level=logging.INFO)
-
-          from tasks.gridded.tile_processor import TileProcessor
-
-          processor = TileProcessor({{inputs.parameters}})
-          processor.process_tile()
-          logging.info("Completed tile processing.")
 
 ##--------------------------------
   # Exit handler templates
