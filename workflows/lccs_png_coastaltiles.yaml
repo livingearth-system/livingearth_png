@@ -27,16 +27,9 @@ spec:
   arguments:
     parameters:
     # LCCS input paramaters
-    - name: product
-      value: "landsat8_c2l2_sr"
-    - name: odc_query
-      # Must include output_crs, resolution, group-by
-      value: '{ "output_crs": "epsg:3085", "resolution": [30, 30], "group_by": "solar_day" }'
-    - name: roi # Region of Interest
-      value: '{"time_start": "2022-01-01", "time_end": "2022-02-28", "boundary": { "type": "Polygon", "crs": { "type": "name", "properties": { "name": "EPSG:4326" } }, "coordinates": [ [ [ 149.21, -35.21 ], [ 149.21,-35.39 ],[ 148.98,-35.39 ], [ 148.98, -35.21 ], [ 149.21, -35.21 ] ] ] } }'
-    - name: measurements
-      # Measurements must be valid for the selected product
-      value: '["red", "green", "blue", "pixel_qa"]'  # json list string.
+    # ID of tile to process. In workflow while testing
+    - name: tile-id
+      value: 1083
     # Output location
     - name: output # output artifacts are placed here
       # TODO Replace with values suitable for your deployment environment.
@@ -73,18 +66,12 @@ spec:
   templates:
   - name: start
     steps:
-    - - name: testing
-        template: testing
+    - - name: lccsclassification
+        template: lccsclassification
         arguments:
           parameters:
-          - name: product
-            value: "{{workflow.parameters.product}}"
-          - name: odc_query
-            value: "{{workflow.parameters.odc_query}}"
-          - name: roi
-            value: "{{workflow.parameters.roi}}"
-          - name: size
-            value: "{{workflow.parameters.size}}"
+          - name: tile-id
+            value: "{{workflow.parameters.tile-id}}"
           - name: tiles_per_worker
             value: "{{workflow.parameters.tiles_per_worker}}"
           - name: package-repo
@@ -104,14 +91,10 @@ spec:
 
 
 ##--------------------------------
-  - name: testing
+  - name: lccsclassification
     inputs:
       parameters:
-      - name: product
-      - name: odc_query
-      - name: roi
-      - name: aws_region
-      - name: size                  # Tile Size in metres
+      - name: tile-id
       - name: tiles_per_worker      # Number of tiles to send to a worker for processing
       - name: git_image
       - name: package-repo          # A sidecar package repo
@@ -150,7 +133,7 @@ spec:
         command: [/bin/sh, -c]
         args:
           - cd "{{inputs.parameters.package-path}}" &&
-            git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.package-repo}}" .
+            git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.tile-id}}" .
           # - cd "{{inputs.parameters.package-path}}" &&
           #   git config --global credential.helper "store --file /secret/git/.git-credentials" &&
           #   git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.package-repo}}"
@@ -184,7 +167,7 @@ spec:
       workingDir: "{{inputs.parameters.package-path}}"
       command: [bash]
       source: |
-        python /code/scripts/le_lccs_png_level4.py
+        python /code/scripts/le_lccs_png_level4.py -h
 
 
 
