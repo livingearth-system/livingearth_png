@@ -15,6 +15,7 @@ import numpy as np
 import xarray as xr
 import geopandas as gpd
 import rasterio
+from dask.distributed import Client, LocalCluster
 
 import datacube
 from datacube.utils import masking
@@ -40,7 +41,7 @@ from datacube.utils.cog import write_cog
 from datacube.utils.aws import configure_s3_access
 
 # Check for local versions of files, if not use S3 buckets
-PNG_TILES_S3 = "/home/jovyan/data/png_0_25_deg_tiles_coast_edit_anet.gpkg"
+PNG_TILES_S3 = "/home/jovyan/data/png_0_25_deg_tiles.gpkg"
 GMW_2020_S3 = "/home/jovyan/data/gmw_v3_2020_vec_png.gpkg"
 TIDAL_WETLAND_S3 = "/home/jovyan/data/Tidal_wetland_Murray_20172019_30m_PNG.tif"
 OSM_S3 = "/home/jovyan/data/papua-new-guinea.gpkg"
@@ -79,7 +80,9 @@ PNG_BCE_COLOUR_SCHEME = {
 # Force using S3 (e.g., for testing)
 FORCE_S3 = False
 if not os.path.isfile(PNG_TILES_S3) or FORCE_S3:
-    PNG_TILES_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_25_deg_tiles.gpkg"
+    PNG_TILES_S3 = (
+        "s3://oa-bluecarbon-work-easi/livingearth-png/png_0_25_deg_tiles.gpkg"
+    )
 if not os.path.isfile(GMW_2020_S3) or FORCE_S3:
     GMW_2020_S3 = (
         "s3://oa-bluecarbon-work-easi/livingearth-png/gmw_v3_2020_vec_png.gpkg"
@@ -90,15 +93,6 @@ if not os.path.isfile(OSM_S3) or FORCE_S3:
     OSM_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/papua-new-guinea.gpkg"
 if not os.path.isfile(WOODY_S3) or FORCE_S3:
     WOODY_S3 = "s3://oa-bluecarbon-work-easi/livingearth-png/Woodyarti_30m_PNG.tif"
-
-print(f"Loading tiles from {PNG_TILES_S3}")
-print(f"Loading GMW from {GMW_2020_S3}")
-print(f"Loading Tidal Wetlands from {TIDAL_WETLAND_S3}")
-print(f"Loading OSM from {OSM_S3}")
-print(f"Loading woody layer from {WOODY_S3}")
-
-if os.environ.get("GDAL_HTTP_PROXY") is not None:
-    print(f'Will use caching proxy at: {os.environ.get("GDAL_HTTP_PROXY")}')
 
 
 def colour_blue_carbon_ecosystems(classification_array):
@@ -207,529 +201,557 @@ def write_data_cog(classification_data, out_filename):
     data_dataset.close()
 
 
-parser = argparse.ArgumentParser(
-    description="Run PNG LCCS Classification for a specified tile "
-)
-parser.add_argument(
-    "-o", "--outdir", required=True, help="Output directory for classification outputs"
-)
-parser.add_argument(
-    "-t",
-    "--tile_id",
-    type=int,
-    help=f"ID of tile to select from {PNG_TILES_S3} or file specified with '--tile_bounds'.",
-    required=True,
-    default=None,
-)
-parser.add_argument(
-    "--tile_bounds",
-    help="Vector file with bounds of tiles.",
-    required=False,
-    default=PNG_TILES_S3,
-)
-parser.add_argument(
-    "--netcdf",
-    help="Write out netCDF file with variables used for classification, useful for debugging.",
-    required=False,
-    default=False,
-    action="store_true",
-)
-parser.add_argument(
-    "--overwrite",
-    help="Overwrite existing classification.",
-    required=False,
-    default=False,
-    action="store_true",
-)
-args = parser.parse_args()
-
-# Set output paths
-out_bce_rgb_file = os.path.join(
-    args.outdir, f"png_lccs_classification_v0_1_bce_rgb_tile_{args.tile_id:03}.tif"
-)
-out_data_file = os.path.join(
-    args.outdir, f"png_lccs_classification_v0_1_data_tile_{args.tile_id:03}.tif"
-)
-out_data_netcdf = os.path.join(
-    args.outdir, f"png_lccs_classification_v0_1_data_tile_{args.tile_id:03}_netcdf.nc"
-)
-
-# Check if alreadt have output
-if os.path.isfile(out_data_file) and not args.overwrite:
-    print(
-        f"Output file {out_data_file} exists. Please remove or set '--overwrite' flag if you want to run again"
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Run PNG LCCS Classification for a specified tile "
     )
-    sys.exit()
+    parser.add_argument(
+        "-o",
+        "--outdir",
+        required=True,
+        help="Output directory for classification outputs",
+    )
+    parser.add_argument(
+        "-t",
+        "--tile_id",
+        type=int,
+        help=f"ID of tile to select from {PNG_TILES_S3} or file specified with '--tile_bounds'.",
+        required=True,
+        default=None,
+    )
+    parser.add_argument(
+        "--tile_bounds",
+        help="Vector file with bounds of tiles.",
+        required=False,
+        default=PNG_TILES_S3,
+    )
+    parser.add_argument(
+        "--netcdf",
+        help="Write out netCDF file with variables used for classification, useful for debugging.",
+        required=False,
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "--overwrite",
+        help="Overwrite existing classification.",
+        required=False,
+        default=False,
+        action="store_true",
+    )
+    args = parser.parse_args()
 
-# Connect to datacube
-dc = datacube.Datacube(app="level3")
+    # Set output paths
+    out_bce_rgb_file = os.path.join(
+        args.outdir, f"png_lccs_classification_v0_1_bce_rgb_tile_{args.tile_id:03}.tif"
+    )
+    out_data_file = os.path.join(
+        args.outdir, f"png_lccs_classification_v0_1_data_tile_{args.tile_id:03}.tif"
+    )
+    out_data_netcdf = os.path.join(
+        args.outdir,
+        f"png_lccs_classification_v0_1_data_tile_{args.tile_id:03}_netcdf.nc",
+    )
 
-# virtual product catalog
-catalog = catalog_from_file(
-    os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__), "../le_plugins/virtual_product_cat.yaml"
+    # Check if already have output
+    if os.path.isfile(out_data_file) and not args.overwrite:
+        print(
+            f"Output file {out_data_file} exists. Please remove or set '--overwrite' flag if you want to run again"
+        )
+        sys.exit()
+
+    if os.environ.get("GDAL_HTTP_PROXY") is not None:
+        print(f'Will use caching proxy at: {os.environ.get("GDAL_HTTP_PROXY")}')
+
+    print(f"Loading tiles from {PNG_TILES_S3}")
+    print(f"Loading GMW from {GMW_2020_S3}")
+    print(f"Loading Tidal Wetlands from {TIDAL_WETLAND_S3}")
+    print(f"Loading OSM from {OSM_S3}")
+    print(f"Loading woody layer from {WOODY_S3}")
+
+    # Set up local dask cluster
+    cluster = LocalCluster()
+    client = Client(cluster)
+
+    # Configure AWS access
+    configure_s3_access(aws_unsigned=False, requester_pays=True, client=client, cloud_defaults=True)
+
+
+    # Connect to datacube
+    dc = datacube.Datacube(app="level3")
+
+    # virtual product catalog
+    catalog = catalog_from_file(
+        os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__), "../le_plugins/virtual_product_cat.yaml"
+            )
         )
     )
-)
 
 
-# Configure AWS access
-configure_s3_access(aws_unsigned=False, requester_pays=True)
+    # Read in bounds tiles
+    bounds_gdf = data = gpd.read_file(args.tile_bounds)
 
-# Read in bounds tiles
-bounds_gdf = data = gpd.read_file(args.tile_bounds)
+    # Get polygon for specified tile
+    tile_gdf = bounds_gdf[bounds_gdf.id == args.tile_id]
 
-# Get polygon for specified tile
-tile_gdf = bounds_gdf[bounds_gdf.id == args.tile_id]
+    # Get bounds for tile
+    latitude = (float(tile_gdf.bounds.maxy), float(tile_gdf.bounds.miny))
+    longitude = (float(tile_gdf.bounds.minx), float(tile_gdf.bounds.maxx))
 
+    # Set up time
+    # TODO: read this from the command line
+    time = ("2020-01-01", "2020-12-31")
 
-# Get bounds for tile
-latitude = (float(tile_gdf.bounds.maxy), float(tile_gdf.bounds.miny))
-longitude = (float(tile_gdf.bounds.minx), float(tile_gdf.bounds.maxx))
+    crs = "EPSG:32755"
+    res = (30, -30)
 
-# Set up time
-# TODO: read this from the command line
-time = ("2020-01-01", "2020-12-31")
+    query = {
+        "time": time,
+        "latitude": latitude,
+        "longitude": longitude,
+        "output_crs": crs,
+        "resolution": res,
+        "dask_chunks": {"time": 10, "x": 2048, "y": 2048},
+    }
 
-crs = "EPSG:32755"
-res = (30, -30)
+    print(
+        f"Running for tile {args.tile_id}. Extent {latitude[0]} - {latitude[1]} N, {longitude[0]} - {longitude[1]} E..."
+    )
 
-query = {
-    "time": time,
-    "latitude": latitude,
-    "longitude": longitude,
-    "output_crs": crs,
-    "resolution": res,
-}
+    # ### 1. Vegetated / Non-Vegetated
 
-print(
-    f"Running for tile {args.tile_id}. Extent {latitude[0]} - {latitude[1]} N, {longitude[0]} - {longitude[1]} E..."
-)
+    #    * **Primarily Vegetated Areas**:
+    #    This class applies to areas that have a vegetative cover of at least 4% for at least two months of the year, consisting of Woody (Trees, Shrubs) and/or Herbaceous (Forbs, Graminoids) lifeforms, or at least 25% cover of Lichens/Mosses when other life forms are absent.
+    #
+    #    * **Primarily Non-Vegetated Areas**:
+    #    Areas which are not primarily vegetated.
+    #
+    #
+    # Fractional cover (FC) is used to distinguish between vegetated and not vegetated.
+    # http://data.auscover.org.au/xwiki/bin/view/Product+pages/Landsat+Fractional+Cover
+    # <br>We are using the 90th annual percentile for both Photosyntheic (PV) and Non-photosynthetic (NPV) vegetation. This removes noise and outliers and gives a robust maximum annual value. A threshold is then applied where PV or NPV is greater than 50%, the rationale being that if a pixel is greater than 50% PV or NPV we can be confident that it is likely to be vegetated. In addition, a maximum threshold value is given to NPV as non-photosynthetic vegetation and bare soil (BS) fractions can be unreliable at maximum values due to inherent issues with unmixing NPV and BS signatures.
+    #
+    # <font color=red>**TODO:**</font> need to calculate number of observations for annual time series to define vegetation correctly as in FAO guidelines. This will likely be similar to WOfS wet/clear obervations but for FC where PV or NPV is greater than 50% for 60 days per year
 
-# ### 1. Vegetated / Non-Vegetated
+    # Load Fractional Cover
 
-#    * **Primarily Vegetated Areas**:
-#    This class applies to areas that have a vegetative cover of at least 4% for at least two months of the year, consisting of Woody (Trees, Shrubs) and/or Herbaceous (Forbs, Graminoids) lifeforms, or at least 25% cover of Lichens/Mosses when other life forms are absent.
-#
-#    * **Primarily Non-Vegetated Areas**:
-#    Areas which are not primarily vegetated.
-#
-#
-# Fractional cover (FC) is used to distinguish between vegetated and not vegetated.
-# http://data.auscover.org.au/xwiki/bin/view/Product+pages/Landsat+Fractional+Cover
-# <br>We are using the 90th annual percentile for both Photosyntheic (PV) and Non-photosynthetic (NPV) vegetation. This removes noise and outliers and gives a robust maximum annual value. A threshold is then applied where PV or NPV is greater than 50%, the rationale being that if a pixel is greater than 50% PV or NPV we can be confident that it is likely to be vegetated. In addition, a maximum threshold value is given to NPV as non-photosynthetic vegetation and bare soil (BS) fractions can be unreliable at maximum values due to inherent issues with unmixing NPV and BS signatures.
-#
-# <font color=red>**TODO:**</font> need to calculate number of observations for annual time series to define vegetation correctly as in FAO guidelines. This will likely be similar to WOfS wet/clear obervations but for FC where PV or NPV is greater than 50% for 60 days per year
+    # Need to add any transformations for the VP you're using
+    # Get location of transformation
+    print("Loading fractional cover...")
+    transformation = "fractional_cover"
+    trans_loc = importlib.import_module(transformation)
+    trans_class = transformation.split(".")[-1]
 
-# Load Fractional Cover
+    DEFAULT_RESOLVER.register("transform", trans_class, getattr(trans_loc, trans_class))
 
-# Need to add any transformations for the VP you're using
-# Get location of transformation
-print("Loading fractional cover...")
-transformation = "fractional_cover"
-trans_loc = importlib.import_module(transformation)
-trans_class = transformation.split(".")[-1]
+    product = catalog["fractional_cover"]
+    fractional_cover = product.load(dc, **query)
+    fractional_cover = masking.mask_invalid_data(fractional_cover)
+    # Compute fractional cover, will need to use it as a mask later so need to compute before then
+    fractional_cover = fractional_cover.compute()
 
-DEFAULT_RESOLVER.register("transform", trans_class, getattr(trans_loc, trans_class))
+    # Load WOfS
 
-product = catalog["fractional_cover"]
-fractional_cover = product.load(dc, **query)
-fractional_cover = masking.mask_invalid_data(fractional_cover)
+    # Need to add any transformations for the VP you're using
+    # Get location of transformation
+    print("Loading WOfS...")
+    transformation = "WOfS"
+    trans_loc = importlib.import_module(transformation)
+    trans_class = transformation.split(".")[-1]
 
-# Load WOfS
+    DEFAULT_RESOLVER.register("transform", trans_class, getattr(trans_loc, trans_class))
 
-# Need to add any transformations for the VP you're using
-# Get location of transformation
-print("Loading WOfS...")
-transformation = "WOfS"
-trans_loc = importlib.import_module(transformation)
-trans_class = transformation.split(".")[-1]
+    product = catalog["WOfS"]
+    wofs = product.load(dc, **query)
+    wofs = masking.mask_invalid_data(wofs)
 
-DEFAULT_RESOLVER.register("transform", trans_class, getattr(trans_loc, trans_class))
+    wofs_mask = wofs["frequency"] >= 0.2
+    # Compute WOfS mask here. Will also need to use this as a mask so compute before.
+    wofs_mask = wofs_mask.compute()
 
-product = catalog["WOfS"]
-wofs = product.load(dc, **query)
-wofs = masking.mask_invalid_data(wofs)
+    # Create binary layer representing vegetated (1) and non-vegetated (0)
+    vegetat = (fractional_cover["PV_PC_90"] > 25).fillna(0) - (
+        fractional_cover["NPV_PC_90"] > 25
+    ).fillna(0)
+    vegetat = (vegetat.where(vegetat > 0) * 0 + 1).fillna(0)
 
-wofs_mask = wofs["frequency"] >= 0.2
+    # mask out water here
+    vegetat = (vegetat.where(wofs_mask == 0) * 0 + vegetat).fillna(0)
 
-# Create binary layer representing vegetated (1) and non-vegetated (0)
-vegetat = (fractional_cover["PV_PC_90"] > 25).fillna(0) - (
-    fractional_cover["NPV_PC_90"] > 25
-).fillna(0)
-vegetat = (vegetat.where(vegetat > 0) * 0 + 1).fillna(0)
+    # Convert to Dataset and add name
+    vegetat_veg_cat_ds = vegetat.to_dataset(
+        name="vegetat_veg_cat"
+    )  # .squeeze().drop('time')
 
-# mask out water here
-vegetat = (vegetat.where(wofs_mask == 0) * 0 + vegetat).fillna(0)
+    vegetat_veg_cat_ds.vegetat_veg_cat.plot()
 
-# Convert to Dataset and add name
-vegetat_veg_cat_ds = vegetat.to_dataset(
-    name="vegetat_veg_cat"
-)  # .squeeze().drop('time')
+    # ### 2. Aquatic / Terrestrial
 
-vegetat_veg_cat_ds.vegetat_veg_cat.plot()
+    #    * **Primarily Vegetated, Terrestrial**: The vegetation is influenced by the edaphic substratum
+    #    * **Primarily Non-Vegetated, Terrestrial**: The cover is influenced by the edaphic substratum
+    #    * **Primarily Vegetated, Aquatic or regularly flooded**: The environment is significantly influenced by the presence of water over extensive periods of time. The water is the dominant factor determining natural soil development and the type of plant communities living on its surface
+    #    * **Primarily Non-Vegetated, Aquatic or regularly flooded**: Permanent or regularly flood aquatic areas
+    #
+    #
+    # Water Observations from Space (WOfS) is used to distinguish aquatic and terrestrial areas.
+    # https://www.sciencedirect.com/science/article/pii/S0034425715301929?via%3Dihub
+    # * A threshold of 20% is applied for the annual summary dataset to remove flood events not indicative of the landscape.
+    # *i The Mangrove layer are also used for relevant coastal landscapes.
+    #
 
+    # note: wofs (loaded in level 1 as wofs_mask)
 
-# ### 2. Aquatic / Terrestrial
+    # load mangroves as mask
+    print("Loading GMW...")
 
-#    * **Primarily Vegetated, Terrestrial**: The vegetation is influenced by the edaphic substratum
-#    * **Primarily Non-Vegetated, Terrestrial**: The cover is influenced by the edaphic substratum
-#    * **Primarily Vegetated, Aquatic or regularly flooded**: The environment is significantly influenced by the presence of water over extensive periods of time. The water is the dominant factor determining natural soil development and the type of plant communities living on its surface
-#    * **Primarily Non-Vegetated, Aquatic or regularly flooded**: Permanent or regularly flood aquatic areas
-#
-#
-# Water Observations from Space (WOfS) is used to distinguish aquatic and terrestrial areas.
-# https://www.sciencedirect.com/science/article/pii/S0034425715301929?via%3Dihub
-# * A threshold of 20% is applied for the annual summary dataset to remove flood events not indicative of the landscape.
-# *i The Mangrove layer are also used for relevant coastal landscapes.
-#
+    # load in mangrove vector data just for AOI extent
+    bbox = [longitude[0], latitude[1], longitude[1], latitude[0]]
 
-# note: wofs (loaded in level 1 as wofs_mask)
+    # Load the mangrove vector data within the AOI extent
+    gmw = gpd.read_file(GMW_2020_S3, bbox=bbox)
 
-# load mangroves as mask
-print("Loading GMW...")
+    # Check if the mangrove vector dataset is empty
+    if gmw.empty:
+        # If the mangrove vector dataset is empty, create a raster of zeros matching the shape of the WOfS mask
+        mangrove = xr.DataArray(
+            np.zeros_like(wofs_mask),
+            coords=wofs_mask.coords,
+            dims=wofs_mask.dims,
+            attrs=wofs_mask.attrs,
+        )
+    else:
+        # If the mangrove vector dataset is not empty, rasterize it to match the shape of the WOfS mask
+        # Get the bounding box coordinates
+        xmin, ymin, xmax, ymax = bbox
 
-# load in mangrove vector data just for AOI extent
-bbox = [longitude[0], latitude[1], longitude[1], latitude[0]]
+        # Get the mangrove vector data within the AOI extent
+        gmw_aoi = gmw.cx[xmin:xmax, ymin:ymax]
 
-# Load the mangrove vector data within the AOI extent
-gmw = gpd.read_file(GMW_2020_S3, bbox=bbox)
+        # Rasterize the mangrove vector data to match the shape of the WOfS mask
+        mangrove = xr_rasterize(gdf=gmw_aoi, da=wofs_mask)
 
-# Check if the mangrove vector dataset is empty
-if gmw.empty:
-    # If the mangrove vector dataset is empty, create a raster of zeros matching the shape of the WOfS mask
-    mangrove = xr.DataArray(
+    # Open Murray's tidal wetland probability (2017-2019) file as xarray
+    tidal_wetland = rio_slurp_xarray(TIDAL_WETLAND_S3, gbox=vegetat_veg_cat_ds.geobox)
+
+    # Threshold probability layer to 50%
+    tidal_wetland_extent = ((tidal_wetland.where(tidal_wetland > 50)) * 0 + 1).fillna(0)
+
+    # Remove mudflats from Murray's layer
+    tidal_wetland_veg = vegetat_veg_cat_ds.vegetat_veg_cat * tidal_wetland_extent
+
+    # Create binary layer representing aquatic (1) and terrestrial (0)
+    # For coastal landscapes use the following
+    aquatic_wat = wofs_mask + mangrove + tidal_wetland_veg
+    aquatic_wat = (aquatic_wat.where(aquatic_wat > 0) * 0 + 1).fillna(0)
+
+    # Convert to Dataset and add name
+    aquatic_wat_cat_ds = aquatic_wat.to_dataset(
+        name="aquatic_wat_cat"
+    )  # .squeeze().drop('time')
+
+    # ### 3. Natural Vegetation / Crop or Managed Vegetation
+
+    #    * **Primarily Vegetated, Terrestrial, Artificial/Managed**: Cultivated and Managed Terrestrial Areas
+    #    * **Primarily Vegetated, Terrestrial, (Semi-)natural**: Natural and Semi-Natural Vegetation
+    #    * **Primarily Vegetated, Aquatic or Regularly Flooded, Artificial/Managed**: Cultivated Aquatic or Regularly Flooded Areas
+    #    * **Primarily Vegetated, Aquatic or Regularly Flooded, (Semi-)natural**: Natural and Semi-Natural Aquatic or Regularly Flooded Vegetation
+    #
+    print("Calculating natural vegetation...")
+    # Create a raster of zeros
+    cultman = xr.DataArray(
         np.zeros_like(wofs_mask),
         coords=wofs_mask.coords,
         dims=wofs_mask.dims,
         attrs=wofs_mask.attrs,
     )
-else:
-    # If the mangrove vector dataset is not empty, rasterize it to match the shape of the WOfS mask
-    # Get the bounding box coordinates
+
+    # Convert to Dataset and add name
+    cultman_agr_cat_ds = cultman.to_dataset(
+        name="cultman_agr_cat"
+    )  # .squeeze().drop('time')
+
+    # ### 4. Natural Surfaces / Artificial Surfaces
+
+    # load in OSM vector data just for AOI extent
+    OSM_blds = gpd.read_file(OSM_S3, layer="buildings", bbox=bbox)
+    OSM_airports = gpd.read_file(OSM_S3, layer="aeroway_ln", bbox=bbox)
+    OSM_roads = gpd.read_file(OSM_S3, layer="highway_ln", bbox=bbox)
+
+    # get bbox to get geom of gdf
     xmin, ymin, xmax, ymax = bbox
 
-    # Get the mangrove vector data within the AOI extent
-    gmw_aoi = gmw.cx[xmin:xmax, ymin:ymax]
-
-    # Rasterize the mangrove vector data to match the shape of the WOfS mask
-    mangrove = xr_rasterize(gdf=gmw_aoi, da=wofs_mask)
-
-# Open Murray's tidal wetland probability (2017-2019) file as xarray
-tidal_wetland = rio_slurp_xarray(TIDAL_WETLAND_S3, gbox=vegetat_veg_cat_ds.geobox)
-
-# Threshold probability layer to 50%
-tidal_wetland_extent = ((tidal_wetland.where(tidal_wetland > 50)) * 0 + 1).fillna(0)
-
-# Remove mudflats from Murray's layer
-tidal_wetland_veg = vegetat_veg_cat_ds.vegetat_veg_cat * tidal_wetland_extent
-
-# Create binary layer representing aquatic (1) and terrestrial (0)
-# For coastal landscapes use the following
-aquatic_wat = wofs_mask + mangrove + tidal_wetland_veg
-aquatic_wat = (aquatic_wat.where(aquatic_wat > 0) * 0 + 1).fillna(0)
-
-# Convert to Dataset and add name
-aquatic_wat_cat_ds = aquatic_wat.to_dataset(
-    name="aquatic_wat_cat"
-)  # .squeeze().drop('time')
-
-# ### 3. Natural Vegetation / Crop or Managed Vegetation
-
-#    * **Primarily Vegetated, Terrestrial, Artificial/Managed**: Cultivated and Managed Terrestrial Areas
-#    * **Primarily Vegetated, Terrestrial, (Semi-)natural**: Natural and Semi-Natural Vegetation
-#    * **Primarily Vegetated, Aquatic or Regularly Flooded, Artificial/Managed**: Cultivated Aquatic or Regularly Flooded Areas
-#    * **Primarily Vegetated, Aquatic or Regularly Flooded, (Semi-)natural**: Natural and Semi-Natural Aquatic or Regularly Flooded Vegetation
-#
-print("Calculating natural vegetation...")
-# Create a raster of zeros
-cultman = xr.DataArray(
-    np.zeros_like(wofs_mask),
-    coords=wofs_mask.coords,
-    dims=wofs_mask.dims,
-    attrs=wofs_mask.attrs,
-)
-
-# Convert to Dataset and add name
-cultman_agr_cat_ds = cultman.to_dataset(
-    name="cultman_agr_cat"
-)  # .squeeze().drop('time')
-
-# ### 4. Natural Surfaces / Artificial Surfaces
-
-# load in OSM vector data just for AOI extent
-OSM_blds = gpd.read_file(OSM_S3, layer="buildings", bbox=bbox)
-OSM_airports = gpd.read_file(OSM_S3, layer="aeroway_ln", bbox=bbox)
-OSM_roads = gpd.read_file(OSM_S3, layer="highway_ln", bbox=bbox)
-
-# get bbox to get geom of gdf
-xmin, ymin, xmax, ymax = bbox
-
-# Check if the vector dataset is empty
-if OSM_blds.empty:
-    # If the vector dataset is empty, create a raster of zeros matching the shape of the geomedians
-    OSM_blds_xr = xr.DataArray(
-        np.zeros_like(wofs_mask),
-        coords=wofs_mask.coords,
-        dims=wofs_mask.dims,
-        attrs=wofs_mask.attrs,
-    )
-else:
-    OSM_blds_AOI = OSM_blds.cx[xmin:xmax, ymin:ymax]
-    OSM_blds_xr = xr_rasterize(gdf=OSM_blds_AOI, da=wofs_mask)
-
-# Check if the vector dataset is empty
-if OSM_airports.empty:
-    # If the vector dataset is empty, create a raster of zeros matching the shape of the geomedians
-    OSM_airports_xr = xr.DataArray(
-        np.zeros_like(wofs_mask),
-        coords=wofs_mask.coords,
-        dims=wofs_mask.dims,
-        attrs=wofs_mask.attrs,
-    )
-else:
-    OSM_airports_AOI = OSM_airports.cx[xmin:xmax, ymin:ymax]
-    OSM_airports_xr = xr_rasterize(gdf=OSM_airports_AOI, da=wofs_mask)
+    # Check if the vector dataset is empty
+    if OSM_blds.empty:
+        # If the vector dataset is empty, create a raster of zeros matching the shape of the geomedians
+        OSM_blds_xr = xr.DataArray(
+            np.zeros_like(wofs_mask),
+            coords=wofs_mask.coords,
+            dims=wofs_mask.dims,
+            attrs=wofs_mask.attrs,
+        )
+    else:
+        OSM_blds_AOI = OSM_blds.cx[xmin:xmax, ymin:ymax]
+        OSM_blds_xr = xr_rasterize(gdf=OSM_blds_AOI, da=wofs_mask)
 
     # Check if the vector dataset is empty
-if OSM_roads.empty:
-    # If the vector dataset is empty, create a raster of zeros matching the shape of the geomedians
-    OSM_roads_xr = xr.DataArray(
-        np.zeros_like(wofs_mask),
-        coords=wofs_mask.coords,
-        dims=wofs_mask.dims,
-        attrs=wofs_mask.attrs,
-    )
-else:
-    # only selecting out roads that are sealed and fit the taxonomy of artificial surfaces
-    OSM_roads_filtered = OSM_roads[
-        OSM_roads["highway"].isin(
-            [
-                "primary",
-                "primary_link",
-                "secondary",
-                "secondary_link",
-                "trunk",
-                "trunk_link",
-            ]
+    if OSM_airports.empty:
+        # If the vector dataset is empty, create a raster of zeros matching the shape of the geomedians
+        OSM_airports_xr = xr.DataArray(
+            np.zeros_like(wofs_mask),
+            coords=wofs_mask.coords,
+            dims=wofs_mask.dims,
+            attrs=wofs_mask.attrs,
         )
-    ]
-    OSM_roads_AOI = OSM_roads.cx[xmin:xmax, ymin:ymax]
-    OSM_roads_xr = xr_rasterize(gdf=OSM_roads_AOI, da=wofs_mask)
+    else:
+        OSM_airports_AOI = OSM_airports.cx[xmin:xmax, ymin:ymax]
+        OSM_airports_xr = xr_rasterize(gdf=OSM_airports_AOI, da=wofs_mask)
 
-# combine OSM xarrays
-OSM_xr = xr.where(
-    (OSM_blds_xr == 1) | (OSM_airports_xr == 1) | (OSM_roads_xr == 1), 1, 0
-)
+        # Check if the vector dataset is empty
+    if OSM_roads.empty:
+        # If the vector dataset is empty, create a raster of zeros matching the shape of the geomedians
+        OSM_roads_xr = xr.DataArray(
+            np.zeros_like(wofs_mask),
+            coords=wofs_mask.coords,
+            dims=wofs_mask.dims,
+            attrs=wofs_mask.attrs,
+        )
+    else:
+        # only selecting out roads that are sealed and fit the taxonomy of artificial surfaces
+        OSM_roads_filtered = OSM_roads[
+            OSM_roads["highway"].isin(
+                [
+                    "primary",
+                    "primary_link",
+                    "secondary",
+                    "secondary_link",
+                    "trunk",
+                    "trunk_link",
+                ]
+            )
+        ]
+        OSM_roads_AOI = OSM_roads.cx[xmin:xmax, ymin:ymax]
+        OSM_roads_xr = xr_rasterize(gdf=OSM_roads_AOI, da=wofs_mask)
 
-# Convert to Dataset and add name
-artific_urb_cat_ds = OSM_xr.to_dataset(name="artific_urb_cat")
+    # combine OSM xarrays
+    OSM_xr = xr.where(
+        (OSM_blds_xr == 1) | (OSM_airports_xr == 1) | (OSM_roads_xr == 1), 1, 0
+    )
 
-# ### 5. Natural Water / Artificial Water
+    # Convert to Dataset and add name
+    artific_urb_cat_ds = OSM_xr.to_dataset(name="artific_urb_cat")
 
-# NONE
+    # ### 5. Natural Water / Artificial Water
 
-# ### **Collect environmental variables into array for passing to classification system**
+    # NONE
 
-variables_xarray_list = []
-variables_xarray_list.append(vegetat_veg_cat_ds)
-variables_xarray_list.append(aquatic_wat_cat_ds)
-variables_xarray_list.append(cultman_agr_cat_ds)
-variables_xarray_list.append(artific_urb_cat_ds)
-# variables_xarray_list.append(artwatr_wat_cat_ds)
+    # ### **Collect environmental variables into array for passing to classification system**
 
-# **The LCCS classification is hierarchical. The 8 classes are shown below**
-#
-# | Class name                       | Code|     |
-# |----------------------------------|-----|-----|
-# | Cultivated Terrestrial Vegetated | A11 | 111 |
-# | Natural Terrestrial Vegetated    | A12 | 112 |
-# | Cultivated Aquatic Vegetated     | A23 | 123 |
-# | Natural Aquatic Vegetated        | A24 | 124 |
-# | Artificial Surface               | B15 | 215 |
-# | Natural Surface                  | B16 | 216 |
-# | Artificial Water                 | B27 | 227 |
-# | Natural Water                    | B28 | 228 |
-#
+    variables_xarray_list = []
+    variables_xarray_list.append(vegetat_veg_cat_ds)
+    variables_xarray_list.append(aquatic_wat_cat_ds)
+    variables_xarray_list.append(cultman_agr_cat_ds)
+    variables_xarray_list.append(artific_urb_cat_ds)
+    # variables_xarray_list.append(artwatr_wat_cat_ds)
 
-print("Running Level 3 Classification...")
-# Merge to a single dataframe
-classification_data = xr.merge(variables_xarray_list)
+    # **The LCCS classification is hierarchical. The 8 classes are shown below**
+    #
+    # | Class name                       | Code|     |
+    # |----------------------------------|-----|-----|
+    # | Cultivated Terrestrial Vegetated | A11 | 111 |
+    # | Natural Terrestrial Vegetated    | A12 | 112 |
+    # | Cultivated Aquatic Vegetated     | A23 | 123 |
+    # | Natural Aquatic Vegetated        | A24 | 124 |
+    # | Artificial Surface               | B15 | 215 |
+    # | Natural Surface                  | B16 | 216 |
+    # | Artificial Water                 | B27 | 227 |
+    # | Natural Water                    | B28 | 228 |
+    #
 
-# Apply Level 3 classification using separate function. Works through in three stages
-level1, level2, level3 = lccs_l3.classify_lccs_level3(classification_data)
+    print("Running Level 3 Classification...")
+    # Merge to a single dataframe
+    classification_data = xr.merge(variables_xarray_list)
 
-# Save classification values back to xarray
-out_class_xarray = xr.Dataset(
-    {
-        "level1": (classification_data["vegetat_veg_cat"].dims, level1),
-        "level2": (classification_data["vegetat_veg_cat"].dims, level2),
-        "level3": (classification_data["vegetat_veg_cat"].dims, level3),
-    }
-)
-classification_data = xr.merge([classification_data, out_class_xarray])
+    # Apply Level 3 classification using separate function. Works through in three stages
+    level1, level2, level3 = lccs_l3.classify_lccs_level3(classification_data)
 
-# Creating an array of non-valid bare surface because of the wofs' nan issue
-classification_nan = (
-    (
+    # Save classification values back to xarray
+    out_class_xarray = xr.Dataset(
+        {
+            "level1": (classification_data["vegetat_veg_cat"].dims, level1),
+            "level2": (classification_data["vegetat_veg_cat"].dims, level2),
+            "level3": (classification_data["vegetat_veg_cat"].dims, level3),
+        }
+    )
+    classification_data = xr.merge([classification_data, out_class_xarray])
+
+    # Creating an array of non-valid bare surface because of the wofs' nan issue
+    classification_nan = (
+        (
+            classification_data.level3.where(
+                (classification_data.level3 == 216) & (wofs.frequency.isnull())
+            )
+        )
+        * 0
+    ).fillna(1)
+
+    # Filtering non-valid bare surface (i.e, due to NaN in WOFs) out of level 2 and level 3
+    # Level2 set to zero where WOFs is NaN (i.e., info on water/terrestrial in non-veg areas isn't valid)
+    classification_data["level2"] = classification_data.level2 * classification_nan
+
+    # Set Level3 to Level1 value where Level2 is zero
+    # Need to set this later as level4 classification doesn't recognise level3 class 200.
+    # classification_data["level3"] = (
+    #    classification_data.level3.where(
+    #        (classification_data.level1 == 200) & (classification_data.level2 == 0)
+    #    )
+    #    * 0
+    #    + 200
+    # ).fillna(0) + (
+    #    classification_data.level3.where(classification_data.level2 != 0).fillna(0)
+    # )
+
+    # Convert level3 to Dataset and add name
+    level3_ds = classification_data.level3.to_dataset(name="level3")
+
+    # ### 1. Water state
+    # <font color=red>**TODO:** could do this using wofs if we wanted </font>
+
+    # ### 2. Water persistence
+    # <font color=red>**TODO:** could do this using wofs if we wanted </font>
+
+    # ### 3. Lifeform
+    # Describes the detail of vegetated classes, separating woody from herbaceous
+    # 0: Not applicable (such as in water areas)
+    # 1: Woody (trees, shrubs)
+    # 2: Herbaceous (grasses, forbs)
+
+    # Open woodyarti tif file as xarray
+    woody_s1_layer = rio_slurp_xarray(WOODY_S3, gbox=vegetat_veg_cat_ds.geobox)
+
+    # Merge S1-derived Woody layer and GMW
+    woody_layer = mangrove + woody_s1_layer
+
+    # Convert binary woodyarti layer to lifeform lccs classes
+    lifeform = woody_layer.where(woody_layer > 0) * 0 + 1
+    lifeform = lifeform.fillna(2)
+
+    # Convert to Dataset and add name
+    lifeform_veg_cat_ds = lifeform.to_dataset(
+        name="lifeform_veg_cat"
+    ).squeeze()  # .drop('time')
+
+    # ### 4. Canopy cover
+    # <font color=red>**TODO:** could do this using fractional cover if we wanted </font>
+
+    ## Level 4 classification ##
+
+    print("Running Level 4 Classification...")
+    variables_xarray_list = []
+    variables_xarray_list.append(level3_ds)
+    # variables_xarray_list.append(waterstt_wat_cat_ds)
+    # variables_xarray_list.append(waterper_wat_cin_ds)
+    variables_xarray_list.append(lifeform_veg_cat_ds)
+    # variables_xarray_list.append(canopyco_veg_con_ds)
+
+    # Merge to a single dataframe
+    l4_classification_data = xr.merge(variables_xarray_list)
+
+    # Apply Level 4 classification
+    classification_array = lccs_l4.classify_lccs_level4(l4_classification_data)
+
+    # Set Level3 to Level1 value where Level2 is zero
+    classification_data["level3"] = (
         classification_data.level3.where(
-            (classification_data.level3 == 216) & (wofs.frequency.isnull())
+            (classification_data.level1 == 200) & (classification_data.level2 == 0)
         )
+        * 0
+        + 200
+    ).fillna(0) + (
+        classification_data.level3.where(classification_data.level2 != 0).fillna(0)
     )
-    * 0
-).fillna(1)
 
-# Filtering non-valid bare surface (i.e, due to NaN in WOFs) out of level 2 and level 3
-# Level2 set to zero where WOFs is NaN (i.e., info on water/terrestrial in non-veg areas isn't valid)
-classification_data["level2"] = classification_data.level2 * classification_nan
-
-# Set Level3 to Level1 value where Level2 is zero
-# Need to set this later as level4 classification doesn't recognise level3 class 200.
-# classification_data["level3"] = (
-#    classification_data.level3.where(
-#        (classification_data.level1 == 200) & (classification_data.level2 == 0)
-#    )
-#    * 0
-#    + 200
-# ).fillna(0) + (
-#    classification_data.level3.where(classification_data.level2 != 0).fillna(0)
-# )
-
-
-# Convert level3 to Dataset and add name
-level3_ds = classification_data.level3.to_dataset(name="level3")
-
-# ### 1. Water state
-# <font color=red>**TODO:** could do this using wofs if we wanted </font>
-
-# ### 2. Water persistence
-# <font color=red>**TODO:** could do this using wofs if we wanted </font>
-
-# ### 3. Lifeform
-# Describes the detail of vegetated classes, separating woody from herbaceous
-# 0: Not applicable (such as in water areas)
-# 1: Woody (trees, shrubs)
-# 2: Herbaceous (grasses, forbs)
-
-# Open woodyarti tif file as xarray
-woody_s1_layer = rio_slurp_xarray(WOODY_S3, gbox=vegetat_veg_cat_ds.geobox)
-
-# Merge S1-derived Woody layer and GMW
-woody_layer = mangrove + woody_s1_layer
-
-# Convert binary woodyarti layer to lifeform lccs classes
-lifeform = woody_layer.where(woody_layer > 0) * 0 + 1
-lifeform = lifeform.fillna(2)
-
-# Convert to Dataset and add name
-lifeform_veg_cat_ds = lifeform.to_dataset(
-    name="lifeform_veg_cat"
-).squeeze()  # .drop('time')
-
-# ### 4. Canopy cover
-# <font color=red>**TODO:** could do this using fractional cover if we wanted </font>
-
-## Level 4 classification ##
-
-print("Running Level 4 Classification...")
-variables_xarray_list = []
-variables_xarray_list.append(level3_ds)
-# variables_xarray_list.append(waterstt_wat_cat_ds)
-# variables_xarray_list.append(waterper_wat_cin_ds)
-variables_xarray_list.append(lifeform_veg_cat_ds)
-# variables_xarray_list.append(canopyco_veg_con_ds)
-
-# Merge to a single dataframe
-l4_classification_data = xr.merge(variables_xarray_list)
-
-# Apply Level 4 classification
-classification_array = lccs_l4.classify_lccs_level4(l4_classification_data)
-
-# Set Level3 to Level1 value where Level2 is zero
-classification_data["level3"] = (
-    classification_data.level3.where(
-        (classification_data.level1 == 200) & (classification_data.level2 == 0)
+    classification_level4 = (classification_data.level3 * 10.0) + (
+        classification_array.lifeform_veg_cat_l4a
     )
-    * 0
-    + 200
-).fillna(0) + (
-    classification_data.level3.where(classification_data.level2 != 0).fillna(0)
-)
 
-classification_level4 = (classification_data.level3 * 10.0) + (
-    classification_array.lifeform_veg_cat_l4a
-)
+    ## Select out blue carbon ecosystems (mangrove, saltmarsh, tidal woody area) from level 3 and 4 ##
 
-## Select out blue carbon ecosystems (mangrove, saltmarsh, tidal woody area) from level 3 and 4 ##
+    print("Selecting out Blue Carbon Ecosystems")
+    # ### 1. Mangrove ecosystem
+    # - level 3 == 124
+    # - lifeform == 1
+    # - GMW == 1
 
-print("Selecting out Blue Carbon Ecosystems")
-# ### 1. Mangrove ecosystem
-# - level 3 == 124
-# - lifeform == 1
-# - GMW == 1
+    mangrove_class = (
+        level3_ds.level3.where(
+            (classification_array.level3 == 124)
+            & (classification_array.lifeform_veg_cat_l4a == 1)
+            & (mangrove == 1)
+        )
+        * 0
+        + 1
+    ).fillna(0)
 
-mangrove_class = (
-    level3_ds.level3.where(
-        (classification_array.level3 == 124)
-        & (classification_array.lifeform_veg_cat_l4a == 1)
-        & (mangrove == 1)
+    # ### 2. Tidal woody ecosystem
+    # - level 3 == 124
+    # - lifeform == 1
+    # - GMW == 0
+
+    tidal_woody_class = (
+        level3_ds.level3.where(
+            (classification_array.level3 == 124)
+            & (classification_array.lifeform_veg_cat_l4a == 1)
+            & (mangrove != 1)
+        )
+        * 0
+        + 2
+    ).fillna(0)
+
+    # ### 3. Saltmarsh ecosystem
+    # - level 3 == 124
+    # - lifeform == 2
+
+    saltmarsh_class = (
+        level3_ds.level3.where(
+            (classification_array.level3 == 124)
+            & (classification_array.lifeform_veg_cat_l4a == 2)
+        )
+        * 0
+        + 3
+    ).fillna(0)
+
+    # ## <font color=blue>Blue carbon ecosystems</font>
+
+    # combine
+    bce = mangrove_class + saltmarsh_class + tidal_woody_class
+    bce = bce.where(bce != 0, classification_level4)
+
+    bce = bce.to_dataset(name="bce")
+    classification_level4 = classification_level4.to_dataset(name="level4")
+    classification_data = xr.merge([classification_data, classification_level4, bce])
+
+    write_data_cog(classification_data, out_data_file)
+    print("Classification finished")
+    print(f"Wrote output to {out_data_file}")
+
+    red, green, blue, alpha = colour_blue_carbon_ecosystems(
+        classification_data.bce.values
     )
-    * 0
-    + 1
-).fillna(0)
+    write_rgb_cog(classification_data, red, green, blue, out_bce_rgb_file)
+    print(f"Saved BCE RGB to {out_bce_rgb_file}")
 
-# ### 2. Tidal woody ecosystem
-# - level 3 == 124
-# - lifeform == 1
-# - GMW == 0
+    if args.netcdf:
+        classification_data.to_netcdf(
+            out_data_netcdf,
+            encoding={
+                var: {"zlib": True, "complevel": 4}
+                for var in classification_data.data_vars
+            },
+        )
+        print(f"Wrote output netCDF to {out_data_netcdf}")
 
-tidal_woody_class = (
-    level3_ds.level3.where(
-        (classification_array.level3 == 124)
-        & (classification_array.lifeform_veg_cat_l4a == 1)
-        & (mangrove != 1)
-    )
-    * 0
-    + 2
-).fillna(0)
-
-# ### 3. Saltmarsh ecosystem
-# - level 3 == 124
-# - lifeform == 2
-
-saltmarsh_class = (
-    level3_ds.level3.where(
-        (classification_array.level3 == 124)
-        & (classification_array.lifeform_veg_cat_l4a == 2)
-    )
-    * 0
-    + 3
-).fillna(0)
-
-# ## <font color=blue>Blue carbon ecosystems</font>
-
-# combine
-bce = mangrove_class + saltmarsh_class + tidal_woody_class
-bce = bce.where(bce != 0, classification_level4)
-
-bce = bce.to_dataset(name="bce")
-classification_level4 = classification_level4.to_dataset(name="level4")
-classification_data = xr.merge([classification_data, classification_level4, bce])
-
-write_data_cog(classification_data, out_data_file)
-print("Classification finished")
-print(f"Wrote output to {out_data_file}")
-
-red, green, blue, alpha = colour_blue_carbon_ecosystems(classification_data.bce.values)
-write_rgb_cog(classification_data, red, green, blue, out_bce_rgb_file)
-print(f"Saved BCE RGB to {out_bce_rgb_file}")
-
-if args.netcdf:
-    classification_data.to_netcdf(
-        out_data_netcdf,
-        encoding={
-            var: {"zlib": True, "complevel": 4} for var in classification_data.data_vars
-        },
-    )
-    print(f"Wrote output netCDF to {out_data_netcdf}")
+    # Close down dask cluster
+    client.close()
+    cluster.close()
