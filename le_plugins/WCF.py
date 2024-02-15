@@ -3,7 +3,6 @@ import xarray as xr
 import datacube
 import pickle
 import sys
-sys.path.append("/home/jovyan/code/dea-notebooks/Tools")
 from dea_tools.classification import sklearn_unflatten
 from dea_tools.classification import sklearn_flatten
 
