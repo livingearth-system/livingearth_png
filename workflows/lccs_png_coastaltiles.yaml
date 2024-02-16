@@ -88,6 +88,8 @@ spec:
             value: "{{workflow.parameters.wf_image}}"
           - name: git_image
             value: "{{workflow.parameters.git_image}}"
+          - name: dask_image
+            value: "{{workflow.parameters.dask_image}}"
 
 
 ##--------------------------------
@@ -101,6 +103,7 @@ spec:
       - name: package-branch        # The sidecar package repo branch
       - name: package-path          # Top level dir in which sidecar package will be downloaded to, e.g. {{package-path}}/easi-workflows
       - name: package-secret        # Git-credentials format, e.g. git-credentials: $(echo -n "https://username:password@dev.azure.com | base64)
+      - name: dask_image
 
     # outputs:
     #   parameters:
@@ -133,7 +136,7 @@ spec:
         command: [/bin/sh, -c]
         args:
           - cd "{{inputs.parameters.package-path}}" &&
-            git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.tile-id}}" .
+            git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.package-repo}}" .
           # - cd "{{inputs.parameters.package-path}}" &&
           #   git config --global credential.helper "store --file /secret/git/.git-credentials" &&
           #   git clone --depth 1 --branch "{{inputs.parameters.package-branch}}" "{{inputs.parameters.package-repo}}"
@@ -149,6 +152,11 @@ spec:
           value: '5'
         - name: DATACUBE_CONFIG_PATH
           value: "/root/.user-secret-easi-odc-v2/.datacube.conf"
+        # Unset GDAL proxies.
+        - name: GDAL_HTTP_PROXY
+          value: ""
+        - name: AWS_HTTPS
+          value: "YES"
       resources: # limit the resources
         limits:
           memory: 2Gi
@@ -167,7 +175,20 @@ spec:
       workingDir: "{{inputs.parameters.package-path}}"
       command: [bash]
       source: |
-        python /code/scripts/le_lccs_png_level4.py -h
+        # Make temporary directory
+        temp_classification_out=`mktemp --directory --suffix=_le_lccs_png`
+
+        # Run classification for input tile
+        python /code/scripts/le_lccs_png_level4.py -o $temp_classification_out -t "{{inputs.parameters.tile-id}}"
+
+        # Upload files to AWS bucket
+        for out_tiff in `ls $temp_classification_out/*tif`
+        do
+          aws s3 cp $out_tiff s3://oa-bluecarbon-work-easi/livingearth-png/classification_out_test/
+        done
+
+        # Remove temporary directory
+        rm -fr $temp_classification_out
 
 
 
