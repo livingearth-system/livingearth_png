@@ -9,6 +9,9 @@
 |__Disclaimer__| This repository is *in development*, use at your own risk |
 |__License__| The Apache 2.0 license applies to this open source code. |
 
+[![DOI](https://zenodo.org/badge/596009239.svg)](https://doi.org/10.5281/zenodo.14049281)
+
+
 ### 1. About
 This repository includes scripts and notebooks for demonstrating the transferability and translational capacity of the [Living Earth](https://bitbucket.org/au-eoed/livingearth_lccs/src/main/) systen to map blue carbon ecosystem (BCE) for Papua New Guinea (PNG). The project is a collaboration between the CSIRO, University of Newcastle, Aberystwyth University, and Plymouth Marine Laboratory. The project team includes [Dr Chris Owers](https://www.newcastle.edu.au/profile/chris-owers), [Dr Carole Planque](https://research.aber.ac.uk/en/persons/carole-planque-3) , [Dr Dan Clewley](https://www.pml.ac.uk/People/Dr-Daniel-Clewley), [Matt Paget](https://people.csiro.au/P/M/matt-paget), [Annette Burke](https://www.newcastle.edu.au/profile/annette-burke), [Professor Richard Lucas](https://research.aber.ac.uk/en/persons/richard-lucas) and [Dr Andy Steven](https://scholar.google.com.au/citations?user=-vCqGB8AAAAJ&hl=en).
 
