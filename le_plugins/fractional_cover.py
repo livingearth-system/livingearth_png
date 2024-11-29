@@ -62,4 +62,4 @@ class fractional_cover(Transformation):
         return fc_percentile
 
     def measurements(self, input_measurements):
-        return {'fc_percentile': Measurement(name='fc_percentile', dtype='float32', nodata=float('nan'), units='1')}
+        return {'fc_percentile': Measurement(name='fc_percentile', dtype=np.float32, nodata=np.nan, units='1')}
